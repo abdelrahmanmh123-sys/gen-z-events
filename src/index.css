@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html,
+  body {
+    font-family: var(--font-sans);
+    background-color: #08090c;
+    color: #f5f6f8;
+    overflow-x: clip;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-mono-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  button:not(:disabled),
+  [role="button"] {
+    cursor: pointer;
+  }
+}

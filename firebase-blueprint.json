@@ -1,0 +1,585 @@
+{
+  "entities": {
+    "Concert": {
+      "title": "Concert",
+      "description": "A live concert event in Qena with custom tier pricing and seat capacity.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "artist": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "venue": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "isoDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "isoTime": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 5,
+          "pattern": "^\\d{2}:\\d{2}$"
+        },
+        "date": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 40
+        },
+        "time": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "doors": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "genre": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "priceEgp": {
+          "type": "number"
+        },
+        "tierPrices": {
+          "type": "object",
+          "description": "Map with numeric prices for Silver, Gold, VIP, and Lounge tiers."
+        },
+        "totalSeats": {
+          "type": "integer"
+        },
+        "seatsLeft": {
+          "type": "integer"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 800
+        },
+        "posterUrl": {
+          "type": "string",
+          "maxLength": 400000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "artist",
+        "venue",
+        "isoDate",
+        "isoTime",
+        "date",
+        "time",
+        "doors",
+        "genre",
+        "priceEgp",
+        "tierPrices",
+        "totalSeats",
+        "seatsLeft",
+        "description",
+        "posterUrl",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A fan ticket reservation and gate check-in record for a concert.",
+      "type": "object",
+      "properties": {
+        "bookingCode": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "concertId": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "concertTitle": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "concertDate": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 40
+        },
+        "concertTime": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "concertVenue": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "tier": {
+          "type": "string",
+          "enum": ["Silver", "Gold", "VIP", "Lounge"]
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "unitPrice": {
+          "type": "number"
+        },
+        "promoCode": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "discountEgp": {
+          "type": "number"
+        },
+        "totalEgp": {
+          "type": "number"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["InstaPay", "Mobile Wallets"]
+        },
+        "transferRef": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 80
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["Pending", "Paid"]
+        },
+        "checkedIn": {
+          "type": "boolean"
+        },
+        "checkedInAt": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "approvedBy": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "approvalMethod": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "customerName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "customerMobile": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 30
+        },
+        "customerEmail": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "bookingCode",
+        "userId",
+        "concertId",
+        "concertTitle",
+        "concertDate",
+        "concertTime",
+        "concertVenue",
+        "tier",
+        "quantity",
+        "unitPrice",
+        "promoCode",
+        "discountEgp",
+        "totalEgp",
+        "paymentMethod",
+        "transferRef",
+        "paymentStatus",
+        "checkedIn",
+        "checkedInAt",
+        "approvedBy",
+        "approvalMethod",
+        "customerName",
+        "customerMobile",
+        "customerEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Promo": {
+      "title": "Promo",
+      "description": "Discount code applicable to concert ticket orders.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9_\\-]+$"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["percent", "flat"]
+        },
+        "value": {
+          "type": "number"
+        },
+        "tiers": {
+          "type": "array",
+          "description": "Allowed tiers; empty array applies to all tiers."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "code",
+        "type",
+        "value",
+        "tiers",
+        "label",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private fan account profile and saved concert favorites.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "mobile": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "city": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "favoriteGenre": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "bio": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "favorites": {
+          "type": "array",
+          "description": "Saved concert IDs (max 50)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "email",
+        "mobile",
+        "city",
+        "favoriteGenre",
+        "bio",
+        "favorites",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WaitlistEntry": {
+      "title": "WaitlistEntry",
+      "description": "Fan notification request for a sold-out concert.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "concertId": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "concertTitle": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "mobile": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 30
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "concertId",
+        "concertTitle",
+        "name",
+        "mobile",
+        "email",
+        "createdAt"
+      ]
+    },
+    "AdminMember": {
+      "title": "AdminMember",
+      "description": "Authorized staff member with portal access.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["Super Admin", "Gate Staff"]
+        },
+        "addedBy": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email",
+        "role",
+        "addedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminSession": {
+      "title": "AdminSession",
+      "description": "Active staff session heartbeat record.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["Super Admin", "Gate Staff"]
+        },
+        "lastSeen": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "name",
+        "email",
+        "role",
+        "lastSeen",
+        "createdAt"
+      ]
+    },
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Global storefront initialization and configuration state.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "seeded": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "seeded", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/concerts/{concertId}": {
+      "schema": { "$ref": "#/entities/Concert" },
+      "description": "Publicly readable Qena concert catalog; writable only by verified admins."
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/Booking" },
+      "description": "PII-isolated ticket reservations; fans create pending bookings and read/cancel their own, admins manage payment confirmation and gate check-in."
+    },
+    "/promos/{promoId}": {
+      "schema": { "$ref": "#/entities/Promo" },
+      "description": "Publicly readable discount codes; writable only by verified admins."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private fan profiles and favorites; strictly readable and writable only by owner or verified admins."
+    },
+    "/waitlist/{entryId}": {
+      "schema": { "$ref": "#/entities/WaitlistEntry" },
+      "description": "Sold-out concert waitlist entries; fans create/read/delete their own, admins manage all."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminMember" },
+      "description": "Authorized staff directory keyed by sanitized email ID; manageable only by verified admins."
+    },
+    "/adminSessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/AdminSession" },
+      "description": "Active staff session heartbeats; readable and writable only by verified admins."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SiteSettings" },
+      "description": "Global site initialization flags; single-doc readable publicly, writable only by verified admins."
+    }
+  }
+}
