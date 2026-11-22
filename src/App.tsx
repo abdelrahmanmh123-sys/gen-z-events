@@ -486,6 +486,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#08090C] text-[#F5F6F8] flex flex-col">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:start-3 focus:z-[100] focus:px-4 focus:py-2.5 focus:rounded-lg focus:bg-white focus:text-[#08090C] focus:text-xs focus:font-bold focus:shadow-xl"
+      >
+        {lang === 'ar' ? 'الانتقال إلى المحتوى الرئيسي' : 'Skip to main content'}
+      </a>
       <Header
         user={user}
         displayName={displayName}
@@ -496,7 +502,7 @@ export default function App() {
         onOpenAdmin={handleOpenStaffPortal}
       />
 
-      <main className="flex-1">
+      <main id="main-content" className="flex-1">
         <HeroSection
           nextConcert={nextConcert}
           activePromos={activePromos}

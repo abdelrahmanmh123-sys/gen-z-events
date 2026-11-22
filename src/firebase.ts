@@ -1,9 +1,17 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import {
-  doc,
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  browserSessionPersistence,
+  getAuth,
+  indexedDBLocalPersistence,
+  initializeAuth,
+  inMemoryPersistence,
+  GoogleAuthProvider,
+  type Auth,
+} from 'firebase/auth';
+import {
   type Firestore,
-  getDocFromServer,
   getFirestore,
   initializeFirestore,
 } from 'firebase/firestore';
@@ -17,7 +25,9 @@ function initDb(): Firestore {
       app,
       {
         experimentalForceLongPolling: true,
-      },
+        // Prevent ReadableStream stalls in Safari 12-14, older Android WebViews, and mobile carrier proxies
+        useFetchStreams: false,
+      } as Parameters<typeof initializeFirestore>[1],
       firebaseConfig.firestoreDatabaseId,
     );
   } catch {
@@ -25,8 +35,24 @@ function initDb(): Firestore {
   }
 }
 
+function initSafeAuth(): Auth {
+  try {
+    return initializeAuth(app, {
+      persistence: [
+        indexedDBLocalPersistence,
+        browserLocalPersistence,
+        browserSessionPersistence,
+        inMemoryPersistence,
+      ],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch {
+    return getAuth(app);
+  }
+}
+
 export const db = initDb();
-export const auth = getAuth(app);
+export const auth = initSafeAuth();
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
@@ -116,15 +142,3 @@ export function formatFriendlyFirebaseError(error: unknown): string {
   }
   return raw.length > 180 ? `${raw.slice(0, 177)}...` : raw;
 }
-
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
-    }
-  }
-}
-
-void testConnection();

@@ -8,11 +8,16 @@
 }
 
 @layer base {
+  html {
+    color-scheme: dark;
+  }
+
   html,
   body {
     font-family: var(--font-sans);
     background-color: #08090c;
     color: #f5f6f8;
+    overflow-x: hidden;
     overflow-x: clip;
   }
 
@@ -41,6 +46,15 @@
   button:not(:disabled),
   [role="button"] {
     cursor: pointer;
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
   }
 }
 

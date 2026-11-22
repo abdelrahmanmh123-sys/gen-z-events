@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#08090C" />
+    <meta name="color-scheme" content="dark" />
     <title>Gen Z Events — Live Concerts in Qena</title>
     <meta
       name="description"
@@ -21,13 +23,125 @@
     <link rel="apple-touch-icon" href="/assets/aistudio/IMG-20261121-WA0042_bdfb946a.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Non-render-blocking Google Fonts so blocked/slow networks never cause a blank screen -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Cairo:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@500;600;700&display=swap"
+    />
     <link
       href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Cairo:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@500;600;700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Cairo:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@500;600;700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
+    <!-- Synchronous ES5 core polyfills for Safari 12-15, older Chrome/Android WebView, Samsung Internet, and Firefox -->
+    <script>
+      (function () {
+        if (typeof globalThis === 'undefined') {
+          var g = typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : this;
+          try { Object.defineProperty(Object.prototype, '__gz_global__', { get: function () { return this; }, configurable: true }); __gz_global__.globalThis = __gz_global__; delete Object.prototype.__gz_global__; } catch (e) { if (g) g.globalThis = g; }
+        }
+        if (typeof Object.hasOwn !== 'function') {
+          Object.hasOwn = function (obj, prop) {
+            if (obj === null || obj === undefined) throw new TypeError('Cannot convert undefined or null to object');
+            return Object.prototype.hasOwnProperty.call(Object(obj), prop);
+          };
+        }
+        if (typeof Array.prototype.at !== 'function') {
+          Array.prototype.at = function (n) {
+            var k = Math.trunc(n) || 0;
+            if (k < 0) k += this.length;
+            if (k < 0 || k >= this.length) return undefined;
+            return this[k];
+          };
+        }
+        if (typeof String.prototype.replaceAll !== 'function') {
+          String.prototype.replaceAll = function (search, replacement) {
+            if (search instanceof RegExp) {
+              if (!search.global) throw new TypeError('replaceAll must be called with a global RegExp');
+              return this.replace(search, replacement);
+            }
+            return this.split(String(search)).join(String(replacement));
+          };
+        }
+        if (typeof Promise !== 'undefined' && typeof Promise.allSettled !== 'function') {
+          Promise.allSettled = function (promises) {
+            return Promise.all(Array.prototype.slice.call(promises).map(function (p) {
+              return Promise.resolve(p).then(
+                function (value) { return { status: 'fulfilled', value: value }; },
+                function (reason) { return { status: 'rejected', reason: reason }; }
+              );
+            }));
+          };
+        }
+        window.__GENZ_BOOTED__ = false;
+        function showBootFallback(reason) {
+          if (window.__GENZ_BOOTED__) return;
+          var el = document.getElementById('gz-boot-shell');
+          if (!el) return;
+          while (el.firstChild) el.removeChild(el.firstChild);
+          var box = document.createElement('div');
+          box.style.cssText = 'max-width:420px;text-align:center;padding:24px;border:1px solid rgba(255,255,255,0.14);border-radius:14px;background:#101218;';
+          var h = document.createElement('p');
+          h.style.cssText = 'margin:0 0 8px;font-size:17px;font-weight:700;color:#ffffff;';
+          h.textContent = 'Gen Z Events';
+          var pEn = document.createElement('p');
+          pEn.style.cssText = 'margin:0 0 12px;font-size:13px;line-height:1.6;color:#cbd5e1;';
+          pEn.textContent = reason || 'Having trouble loading on this browser. Tap Reload below, or open this link in Chrome or Safari.';
+          var pAr = document.createElement('p');
+          pAr.dir = 'rtl';
+          pAr.style.cssText = 'margin:0 0 16px;font-size:13px;line-height:1.6;color:#cbd5e1;';
+          pAr.textContent = 'حدثت مشكلة في فتح الموقع على هذا المتصفح. اضغط إعادة التحميل أو افتح الرابط في Chrome أو Safari.';
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.style.cssText = 'padding:10px 18px;border:0;border-radius:8px;background:#ffffff;color:#08090C;font-weight:700;font-size:13px;cursor:pointer;';
+          btn.textContent = 'Reload / إعادة التحميل';
+          btn.onclick = function () { window.location.reload(); };
+          box.appendChild(h);
+          box.appendChild(pEn);
+          box.appendChild(pAr);
+          box.appendChild(btn);
+          el.appendChild(box);
+        }
+        window.addEventListener('error', function (evt) {
+          if (window.__GENZ_BOOTED__) return;
+          var msg = evt && evt.message ? String(evt.message) : '';
+          if (msg.indexOf('import.meta') !== -1) return;
+          window.setTimeout(function () {
+            if (!window.__GENZ_BOOTED__) {
+              showBootFallback(msg ? 'Browser loading error: ' + msg : null);
+            }
+          }, 2500);
+        });
+        window.setTimeout(function () {
+          if (!window.__GENZ_BOOTED__) showBootFallback(null);
+        }, 16000);
+      })();
+    </script>
   </head>
-  <body class="bg-[#08090C] text-[#F5F6F8] antialiased selection:bg-white/25 selection:text-white">
-    <div id="root"></div>
+  <body class="bg-[#08090C] text-[#F5F6F8] antialiased selection:bg-white/25 selection:text-white" style="margin:0;background-color:#08090C;color:#F5F6F8;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;">
+    <div id="root">
+      <div id="gz-boot-shell" style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:#08090C;color:#F5F6F8;">
+        <img src="/assets/aistudio/IMG-20261121-WA0042_bdfb946a.jpg" alt="Gen Z Events" width="56" height="56" style="border-radius:12px;margin-bottom:14px;border:1px solid rgba(255,255,255,0.14);" />
+        <p style="margin:0;font-size:15px;font-weight:700;letter-spacing:0.06em;">GEN Z EVENTS</p>
+        <p style="margin:8px 0 0;font-size:12px;color:#94a3b8;">Loading live concerts…</p>
+      </div>
+    </div>
+    <noscript>
+      <div style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:#08090C;color:#F5F6F8;text-align:center;">
+        <div style="max-width:420px;padding:24px;border:1px solid rgba(255,255,255,0.15);border-radius:14px;background:#101218;">
+          <h1 style="margin:0 0 10px;font-size:18px;">JavaScript Required · يرجى تفعيل JavaScript</h1>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#cbd5e1;">Please enable JavaScript in your browser settings to view live concerts and book passes on Gen Z Events.</p>
+        </div>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
