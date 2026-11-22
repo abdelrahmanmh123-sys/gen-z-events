@@ -45,7 +45,7 @@ export class ErrorBoundary extends React.Component<
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-[#08090C] text-sm font-semibold transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
               Reload Gen Z Events

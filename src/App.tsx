@@ -8,6 +8,7 @@ import {
   readPendingSignupProfile,
 } from './components/AuthProfileModal';
 import { BookingModal } from './components/BookingModal';
+import { BrandLogo } from './components/BrandLogo';
 import { ConcertCard } from './components/ConcertCard';
 import { Header } from './components/Header';
 import { HeroSection } from './components/HeroSection';
@@ -540,7 +541,7 @@ export default function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div className="space-y-1.5">
-                <p className="text-xs font-mono-num uppercase tracking-[0.2em] text-rose-400 font-semibold">
+                <p className="text-xs font-mono-num uppercase tracking-[0.2em] text-neutral-400 font-semibold">
                   Qena Concert Calendar
                 </p>
                 <h2 className="font-display font-bold text-2xl sm:text-3xl text-white">
@@ -558,7 +559,7 @@ export default function App() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search artist, show, or venue..."
                     aria-label="Search concerts"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-lg bg-[#101218] border border-white/12 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-lg bg-[#101218] border border-white/12 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
                   />
                 </div>
 
@@ -569,7 +570,7 @@ export default function App() {
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as SortOption)}
                       aria-label="Sort concerts"
-                      className="w-full pl-8 pr-3 py-2.5 rounded-lg bg-[#101218] border border-white/12 text-xs font-medium text-white focus:outline-none focus:border-rose-500"
+                      className="w-full pl-8 pr-3 py-2.5 rounded-lg bg-[#101218] border border-white/12 text-xs font-medium text-white focus:outline-none focus:border-white/50"
                     >
                       <option value="date-asc">Soonest First</option>
                       <option value="price-asc">Price: Low to High</option>
@@ -583,8 +584,8 @@ export default function App() {
                     aria-pressed={savedOnly}
                     className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg border text-xs font-semibold transition-colors whitespace-nowrap ${
                       savedOnly
-                        ? 'border-rose-500 bg-rose-500/15 text-rose-300'
-                        : 'border-white/12 bg-[#101218] text-slate-300 hover:text-white'
+                        ? 'border-white bg-white text-[#08090C]'
+                        : 'border-white/12 bg-[#101218] text-slate-300 hover:text-white hover:border-white/25'
                     }`}
                   >
                     <Heart className={`w-3.5 h-3.5 ${savedOnly ? 'fill-current' : ''}`} />
@@ -644,7 +645,7 @@ export default function App() {
                     setSelectedGenre('All');
                     setSavedOnly(false);
                   }}
-                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white"
+                  className="px-4 py-2 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors"
                 >
                   Reset Filters
                 </button>
@@ -672,9 +673,12 @@ export default function App() {
       {/* Clean Footer */}
       <footer className="border-t border-white/10 bg-[#06070A] py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-slate-400">
-          <div className="space-y-1">
-            <p className="font-display font-bold text-sm text-white">GEN Z EVENTS · QENA</p>
-            <p>InstaPay: 01554118042 · Mobile Wallets: 01007979070 · Upper Egypt Live Productions</p>
+          <div className="flex items-center gap-3.5">
+            <BrandLogo size="md" />
+            <div className="space-y-0.5">
+              <p className="font-display font-bold text-sm text-white">GEN Z EVENTS · QENA</p>
+              <p>InstaPay: 01554118042 · Mobile Wallets: 01007979070 · Upper Egypt Live Productions</p>
+            </div>
           </div>
           <div className="flex items-center gap-5">
             <button

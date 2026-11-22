@@ -1,4 +1,5 @@
 import QRCode from 'qrcode';
+import { BRAND_LOGO_PATH } from '../data/defaults';
 import type { Booking } from '../types';
 import { fitPosterDimensions, MAX_POSTER_DATA_URL_LENGTH } from './bookingLogic';
 
@@ -70,37 +71,62 @@ export async function renderTicketPassPng(booking: Booking): Promise<string> {
 
   // Background
   const bgGrad = ctx.createLinearGradient(0, 0, 920, 500);
-  bgGrad.addColorStop(0, '#0D1017');
-  bgGrad.addColorStop(0.6, '#151926');
-  bgGrad.addColorStop(1, '#1F1020');
+  bgGrad.addColorStop(0, '#050608');
+  bgGrad.addColorStop(0.55, '#0D0F14');
+  bgGrad.addColorStop(1, '#14171F');
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, 920, 500);
 
-  // Accent bar
+  // Monochrome Accent bar
   const accentGrad = ctx.createLinearGradient(0, 0, 920, 0);
-  accentGrad.addColorStop(0, '#F43F5E');
-  accentGrad.addColorStop(1, '#F59E0B');
+  accentGrad.addColorStop(0, '#FFFFFF');
+  accentGrad.addColorStop(1, '#94A3B8');
   ctx.fillStyle = accentGrad;
   ctx.fillRect(0, 0, 920, 8);
 
   // Outer border
-  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
   ctx.lineWidth = 2;
   ctx.strokeRect(18, 22, 884, 456);
 
   // Perforation line
   ctx.setLineDash([7, 7]);
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
   ctx.beginPath();
   ctx.moveTo(610, 32);
   ctx.lineTo(610, 468);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Brand header
-  ctx.fillStyle = '#F43F5E';
+  // Official Brand Logo + Header
+  let headerTextX = 46;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const logoImg = new Image();
+      logoImg.onload = () => {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(46, 44, 38, 38);
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(46, 44, 38, 38);
+        const sx = logoImg.width * 0.16;
+        const sy = logoImg.height * 0.16;
+        const sw = logoImg.width * 0.68;
+        const sh = logoImg.height * 0.68;
+        ctx.drawImage(logoImg, sx, sy, sw, sh, 47, 45, 36, 36);
+        headerTextX = 96;
+        resolve();
+      };
+      logoImg.onerror = () => reject(new Error('Logo draw failed'));
+      logoImg.src = BRAND_LOGO_PATH;
+    });
+  } catch {
+    // fallback cleanly to text-only header
+  }
+
+  ctx.fillStyle = '#E5E7EB';
   ctx.font = 'bold 14px sans-serif';
-  ctx.fillText('GEN Z EVENTS  ·  QENA LIVE', 46, 72);
+  ctx.fillText('GEN Z EVENTS  ·  QENA LIVE', headerTextX, 68);
 
   // Concert Title
   ctx.fillStyle = '#FFFFFF';

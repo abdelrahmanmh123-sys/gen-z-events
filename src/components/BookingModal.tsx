@@ -243,7 +243,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-white/10 flex items-start justify-between gap-4 shrink-0">
           <div className="space-y-1">
-            <p className="text-[11px] font-mono-num uppercase tracking-[0.16em] text-rose-400 font-semibold">
+            <p className="text-[11px] font-mono-num uppercase tracking-[0.16em] text-neutral-400 font-semibold">
               {concert.genre}
               {soldOut ? ' · Sold Out' : ''}
             </p>
@@ -317,7 +317,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-sm font-semibold text-white"
+              className="w-full py-3 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors"
             >
               {!user
                 ? 'Sign In to Join Waitlist'
@@ -335,15 +335,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               {/* Show Metadata Strip */}
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-300 bg-[#08090C] border border-white/8 rounded-lg px-4 py-2.5">
                 <span className="inline-flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-rose-400" />
+                  <Calendar className="w-3.5 h-3.5 text-neutral-300" />
                   {concert.date}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-rose-400" />
+                  <Clock className="w-3.5 h-3.5 text-neutral-300" />
                   Show {concert.time} (Doors {concert.doors})
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                  <MapPin className="w-3.5 h-3.5 text-neutral-300" />
                   {concert.venue}
                 </span>
               </div>
@@ -438,7 +438,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                         }
                       }}
                       placeholder="Try GENZ15 or VIP100"
-                      className="flex-1 px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num uppercase placeholder:text-slate-500 focus:outline-none focus:border-rose-500"
+                      className="flex-1 px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num uppercase placeholder:text-slate-500 focus:outline-none focus:border-white/50"
                     />
                     <button
                       type="button"
@@ -492,7 +492,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                         onClick={() => setPaymentMethod(pm.id)}
                         className={`text-left p-3 rounded-lg border transition-colors ${
                           active
-                            ? 'border-rose-500 bg-rose-500/10'
+                            ? 'border-white bg-white/[0.08]'
                             : 'border-white/10 bg-[#08090C] hover:border-white/25'
                         }`}
                       >
@@ -508,7 +508,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <p className="text-xs text-slate-300 leading-relaxed">
                       {activePayment.instructions}
                     </p>
-                    <p className="text-xs font-mono-num font-bold text-rose-400">
+                    <p className="text-xs font-mono-num font-bold text-white">
                       Send to: {activePayment.destination}
                     </p>
                   </div>
@@ -534,7 +534,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     value={transferRef}
                     onChange={(e) => setTransferRef(e.target.value)}
                     placeholder="e.g. IP-948210 or 010XXXXXXXX"
-                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num placeholder:text-slate-500 focus:outline-none focus:border-rose-500"
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num placeholder:text-slate-500 focus:outline-none focus:border-white/50"
                   />
                 </div>
               </div>
@@ -557,7 +557,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       placeholder="Full Name"
-                      className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-rose-500"
+                      className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                     />
                   </div>
                   <div>
@@ -572,7 +572,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       value={customerMobile}
                       onChange={(e) => setCustomerMobile(e.target.value)}
                       placeholder="010XXXXXXXX"
-                      className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-rose-500"
+                      className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
                     />
                   </div>
                   <div>
@@ -587,7 +587,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
                       placeholder="you@gmail.com"
-                      className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-rose-500"
+                      className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                     />
                   </div>
                 </div>
@@ -615,7 +615,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <button
                 type="submit"
                 disabled={submitting}
-                className="sm:w-auto w-full px-6 py-3 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-sm font-semibold text-white transition-colors whitespace-nowrap"
+                className="sm:w-auto w-full px-6 py-3 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
               >
                 {!user
                   ? 'Sign In to Reserve'

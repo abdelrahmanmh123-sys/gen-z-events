@@ -60,10 +60,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-end">
           {/* Left Editorial Pitch */}
           <div className="lg:col-span-7 space-y-6">
-            <p className="text-xs font-mono-num uppercase tracking-[0.22em] text-rose-400 font-semibold">
+            <p className="text-xs font-mono-num uppercase tracking-[0.22em] text-neutral-300 font-semibold">
               Qena Live · Winter 2026/27 Season
             </p>
-            <h1 className="font-display font-extrabold text-4xl sm:text-5xl lg:text-[3.75rem] leading-[1.06] tracking-tight text-white">
+            <h1 className="font-display font-extrabold text-4xl sm:text-5xl lg:text-[3.75rem] leading-[1.06] tracking-tight text-white [text-wrap:balance]">
               Upper Egypt&apos;s stage for live sound &amp; night culture.
             </h1>
             <p className="text-base sm:text-lg text-slate-300 max-w-xl leading-relaxed">
@@ -72,14 +72,14 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <a
                 href="#lineup"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white hover:bg-neutral-200 text-[#08090C] font-semibold text-sm transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
               >
                 Explore Lineup
                 <ArrowRight className="w-4 h-4" />
               </a>
               <a
                 href="#passes"
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-lg border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] text-slate-100 font-medium text-sm transition-colors"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-lg border border-white/20 bg-white/[0.04] hover:bg-white/[0.1] hover:border-white/35 text-white font-medium text-sm transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
               >
                 Compare Pass Tiers
               </a>
@@ -107,11 +107,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
                   <span className="inline-flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-rose-400" />
+                    <Calendar className="w-3.5 h-3.5 text-neutral-300" />
                     {nextConcert.date} · {nextConcert.time}
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                    <MapPin className="w-3.5 h-3.5 text-neutral-300" />
                     {nextConcert.venue}
                   </span>
                 </div>
@@ -141,7 +141,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => onBookConcert(nextConcert)}
-                  className="w-full py-2.5 px-4 rounded-lg bg-white text-[#08090C] hover:bg-slate-200 font-semibold text-sm transition-colors"
+                  className="w-full py-2.5 px-4 rounded-lg bg-white text-[#08090C] hover:bg-neutral-200 font-semibold text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                 >
                   {nextConcert.seatsLeft > 0 ? 'Book Next Show' : 'Join Waitlist'}
                 </button>
@@ -154,7 +154,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         {activePromos.length > 0 && (
           <div className="mt-10 pt-5 border-t border-white/10 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
             <span className="inline-flex items-center gap-1.5 uppercase tracking-[0.16em] text-slate-400 font-semibold">
-              <Tag className="w-3.5 h-3.5 text-rose-400" />
+              <Tag className="w-3.5 h-3.5 text-neutral-300" />
               Active Club Codes
             </span>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -165,7 +165,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   onClick={() => onCopyPromo(promo.code)}
                   className="inline-flex items-center gap-2 text-slate-200 hover:text-white transition-colors group"
                 >
-                  <span className="font-mono-num font-bold text-rose-400 group-hover:text-rose-300 underline decoration-rose-500/40 underline-offset-4">
+                  <span className="font-mono-num font-bold text-white group-hover:text-neutral-200 underline decoration-white/40 underline-offset-4">
                     {promo.code}
                   </span>
                   <span className="text-slate-400">{promo.label}</span>

@@ -2,6 +2,7 @@ import type { Concert, PaymentMethodMeta, Promo, TierMeta } from '../types';
 
 export const PRIMARY_ADMIN_EMAIL = 'weentamalak@gmail.com';
 export const HERO_IMAGE_PATH = '/assets/hero-qena.jpg';
+export const BRAND_LOGO_PATH = '/assets/aistudio/IMG-20261121-WA0042_bdfb946a.jpg';
 
 export const TICKET_TIERS: TierMeta[] = [
   {

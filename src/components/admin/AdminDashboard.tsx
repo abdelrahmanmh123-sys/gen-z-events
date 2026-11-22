@@ -188,7 +188,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       fontSize: '12px',
                     }}
                   />
-                  <Bar dataKey="sold" name="Paid Passes" fill="#F43F5E" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="sold" name="Paid Passes" fill="#F5F6F8" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

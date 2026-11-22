@@ -5,10 +5,10 @@ import {
   CalendarPlus,
   QrCode,
   Settings2,
-  Shield,
   Tag,
   Users,
 } from 'lucide-react';
+import { BrandLogo } from '../BrandLogo';
 import type {
   AdminMember,
   AdminSession,
@@ -69,9 +69,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
       {/* Top Bar */}
       <header className="sticky top-0 z-30 h-16 border-b border-white/10 bg-[#0B0D12]/95 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="w-8 h-8 rounded-lg bg-amber-400/15 border border-amber-400/35 flex items-center justify-center text-amber-300 shrink-0">
-            <Shield className="w-4 h-4" />
-          </span>
+          <BrandLogo size="sm" />
           <div className="min-w-0">
             <p className="font-display font-bold text-sm sm:text-base text-white truncate">
               Gen Z Events · Staff Command Center
@@ -108,7 +106,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
                   onClick={() => setActiveTab(item.id)}
                   className={`inline-flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
                     active
-                      ? 'bg-rose-600 text-white'
+                      ? 'bg-white text-[#08090C]'
                       : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
                   }`}
                 >
@@ -132,7 +130,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
               {
                 label: 'Paid Revenue',
                 value: `${kpis.totalRevenueEgp.toLocaleString()} EGP`,
-                tone: 'text-rose-400',
+                tone: 'text-white',
               },
             ].map((stat) => (
               <div

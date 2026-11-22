@@ -78,7 +78,7 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
             aria-label={isFavorite ? `Remove ${concert.title} from favorites` : `Save ${concert.title} to favorites`}
             className={`w-8 h-8 rounded-lg flex items-center justify-center backdrop-blur-md border transition-colors ${
               isFavorite
-                ? 'bg-rose-600/90 border-rose-400/50 text-white'
+                ? 'bg-white border-white text-[#08090C]'
                 : 'bg-black/55 border-white/15 text-slate-200 hover:bg-black/80'
             }`}
           >
@@ -109,7 +109,7 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
       {/* Card Body — Crisp Unclipped Metadata & Uniform Baseline */}
       <div className="flex flex-col flex-1 p-5 space-y-3">
         <div className="flex items-center justify-between gap-2 text-[11px] font-mono-num">
-          <span className="uppercase tracking-[0.1em] text-rose-400 font-semibold truncate">
+          <span className="uppercase tracking-[0.1em] text-neutral-300 font-semibold truncate">
             {concert.genre}
           </span>
           <span className="inline-flex items-center gap-1 text-slate-300 shrink-0 whitespace-nowrap">
@@ -126,7 +126,7 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
         </div>
 
         <p className="text-xs text-slate-400 inline-flex items-center gap-1.5 line-clamp-1">
-          <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+          <MapPin className="w-3.5 h-3.5 text-neutral-300 shrink-0" />
           <span className="truncate">{concert.venue}</span>
         </p>
 
@@ -147,10 +147,10 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
           <button
             type="button"
             onClick={() => onBook(concert)}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
               soldOut
                 ? 'border border-white/15 bg-white/[0.05] hover:bg-white/[0.1] text-white'
-                : 'bg-rose-600 hover:bg-rose-500 text-white'
+                : 'bg-white hover:bg-neutral-200 text-[#08090C]'
             }`}
           >
             {soldOut ? 'Join Waitlist' : 'Book Pass'}

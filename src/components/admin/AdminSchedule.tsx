@@ -161,7 +161,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Nile Sunset Sessions"
-              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-rose-500"
+              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
             />
           </div>
           <div>
@@ -176,7 +176,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
               value={artist}
               onChange={(e) => setArtist(e.target.value)}
               placeholder="e.g. Upper Egypt Collective"
-              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-rose-500"
+              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
             />
           </div>
         </div>
@@ -193,7 +193,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
               maxLength={140}
               value={venue}
               onChange={(e) => setVenue(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-rose-500"
+              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
             />
           </div>
           <div>
@@ -207,7 +207,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
               maxLength={60}
               value={genre}
               onChange={(e) => setGenre(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-rose-500"
+              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
             />
           </div>
         </div>
@@ -223,7 +223,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
               required
               value={isoDate}
               onChange={(e) => setIsoDate(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-rose-500"
+              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
             />
           </div>
           <div>
@@ -236,7 +236,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
               required
               value={isoTime}
               onChange={(e) => setIsoTime(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-rose-500"
+              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
             />
           </div>
           <div>
@@ -251,7 +251,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
               required
               value={totalSeats}
               onChange={(e) => setTotalSeats(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-rose-500"
+              className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
             />
           </div>
         </div>
@@ -326,10 +326,10 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
                 value={posterUrl}
                 onChange={(e) => setPosterUrl(e.target.value)}
                 placeholder="https://... or upload image"
-                className="flex-1 px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white focus:outline-none focus:border-rose-500"
+                className="flex-1 px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white focus:outline-none focus:border-white/50"
               />
               <label className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-white/15 bg-white/[0.05] hover:bg-white/[0.1] text-xs font-semibold text-white cursor-pointer whitespace-nowrap">
-                <ImageUp className="w-3.5 h-3.5 text-rose-400" />
+                <ImageUp className="w-3.5 h-3.5 text-neutral-300" />
                 Upload Image
                 <input type="file" accept="image/*" onChange={(e) => void handleUploadPoster(e)} className="sr-only" />
               </label>
@@ -349,14 +349,14 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Describe the live lineup, stage production, and doors schedule..."
-            className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-rose-500"
+            className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
           />
         </div>
 
         <button
           type="submit"
           disabled={busy}
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-sm font-semibold text-white"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors"
         >
           <CalendarPlus className="w-4 h-4" />
           {busy ? 'Publishing Concert...' : 'Publish Concert to Lineup'}

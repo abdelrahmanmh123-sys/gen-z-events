@@ -22,7 +22,7 @@ export const PassTiersSection: React.FC<PassTiersSectionProps> = ({ concerts }) 
     <section id="passes" className="py-16 sm:py-20 border-t border-white/10 bg-[#0B0D12]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <div className="max-w-2xl space-y-2">
-          <p className="text-xs font-mono-num uppercase tracking-[0.2em] text-rose-400 font-semibold">
+          <p className="text-xs font-mono-num uppercase tracking-[0.2em] text-neutral-400 font-semibold">
             Transparent Access
           </p>
           <h2 className="font-display font-bold text-2xl sm:text-3xl text-white">

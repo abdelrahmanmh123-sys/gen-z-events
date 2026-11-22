@@ -333,11 +333,11 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value.toUpperCase())}
               placeholder="Enter Booking Code (e.g. GZ-7K9P2M)"
-              className="flex-1 px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num uppercase focus:outline-none focus:border-rose-500"
+              className="flex-1 px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num uppercase focus:outline-none focus:border-white/50"
             />
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white whitespace-nowrap"
+              className="px-5 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors whitespace-nowrap"
             >
               Verify &amp; Admit
             </button>
@@ -420,7 +420,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
               value={rosterSearch}
               onChange={(e) => setRosterSearch(e.target.value)}
               placeholder="Search code, name, mobile, or transfer ref..."
-              className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white focus:outline-none focus:border-rose-500"
+              className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white focus:outline-none focus:border-white/50"
             />
           </div>
 

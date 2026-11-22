@@ -21,10 +21,10 @@ import {
   RefreshCw,
   Ticket,
   Trash2,
-  User as UserIcon,
   X,
 } from 'lucide-react';
 import { auth, formatFriendlyFirebaseError, googleProvider } from '../firebase';
+import { BrandLogo } from './BrandLogo';
 import { upsertUserProfile } from '../services/firestoreService';
 import type { UserProfile } from '../types';
 import {
@@ -481,12 +481,8 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
       <div className="relative w-full max-w-md bg-[#101218] border border-white/15 rounded-xl shadow-2xl overflow-hidden my-auto">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            {isUnverifiedAccount ? (
-              <MailCheck className="w-4 h-4 text-rose-400" />
-            ) : (
-              <UserIcon className="w-4 h-4 text-rose-400" />
-            )}
+          <div className="flex items-center gap-3">
+            <BrandLogo size="sm" />
             <h2 className="font-display font-bold text-lg text-white">{modalTitle}</h2>
           </div>
           <button
@@ -559,7 +555,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                         value={signupName}
                         onChange={(e) => setSignupName(e.target.value)}
                         placeholder="First and last name (e.g. Nour Hassan)"
-                        className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500"
+                        className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
                       />
                     </div>
                     <div>
@@ -575,7 +571,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                         value={signupMobile}
                         onChange={(e) => setSignupMobile(e.target.value)}
                         placeholder="010XXXXXXXX"
-                        className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num placeholder:text-slate-500 focus:outline-none focus:border-rose-500"
+                        className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num placeholder:text-slate-500 focus:outline-none focus:border-white/50"
                       />
                       <p className="text-[11px] text-slate-500 mt-1">
                         11-digit number starting with 010, 011, 012, or 015.
@@ -597,7 +593,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@gmail.com"
-                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500"
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
                   />
                 </div>
 
@@ -611,7 +607,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                         type="button"
                         disabled={authBusy}
                         onClick={() => void handlePasswordReset()}
-                        className="text-[11px] font-medium text-rose-400 hover:text-rose-300 disabled:opacity-50"
+                        className="text-[11px] font-medium text-neutral-300 hover:text-white underline underline-offset-2 decoration-white/30 disabled:opacity-50"
                       >
                         Forgot password?
                       </button>
@@ -627,7 +623,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder={authMode === 'signup' ? '8+ chars with letters & numbers' : 'Enter your password'}
-                      className="w-full px-3.5 py-2.5 pr-10 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500"
+                      className="w-full px-3.5 py-2.5 pr-10 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
                     />
                     <button
                       type="button"
@@ -668,7 +664,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Repeat your password"
-                      className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500"
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
                     />
                   </div>
                 )}
@@ -682,7 +678,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                 <button
                   type="submit"
                   disabled={authBusy}
-                  className="w-full py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-sm font-semibold text-white transition-colors"
+                  className="w-full py-2.5 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                 >
                   {authBusy
                     ? 'Please wait...'
@@ -704,7 +700,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                 type="button"
                 disabled={authBusy}
                 onClick={handleGoogleSignIn}
-                className="w-full py-2.5 px-4 rounded-lg border border-white/15 bg-white text-[#08090C] hover:bg-slate-200 disabled:opacity-60 text-sm font-semibold transition-colors flex items-center justify-center gap-2.5"
+                className="w-full py-2.5 px-4 rounded-lg border border-white/20 bg-white/[0.05] text-white hover:bg-white/[0.11] hover:border-white/35 disabled:opacity-60 text-sm font-semibold transition-colors flex items-center justify-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
                   <path
@@ -730,8 +726,8 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
           ) : isUnverifiedAccount ? (
             <div className="space-y-5">
               <div className="p-4 rounded-xl bg-[#08090C] border border-white/10 space-y-2.5">
-                <div className="w-10 h-10 rounded-lg bg-rose-600/15 border border-rose-500/35 flex items-center justify-center">
-                  <MailCheck className="w-5 h-5 text-rose-400" />
+                <div className="w-10 h-10 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
+                  <MailCheck className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="font-display font-bold text-base text-white">
                   Confirm your email to activate your account
@@ -766,7 +762,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   type="button"
                   disabled={verifyBusy}
                   onClick={() => void handleCheckVerified()}
-                  className="w-full py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-sm font-semibold text-white transition-colors inline-flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors inline-flex items-center justify-center gap-2"
                 >
                   <RefreshCw className={`w-4 h-4 ${verifyBusy ? 'animate-spin' : ''}`} />
                   {verifyBusy ? 'Checking...' : "I've Verified My Email"}
@@ -810,7 +806,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
               {/* Verified Account Summary Header */}
               <div className="flex items-center justify-between gap-3 pb-4 border-b border-white/10">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-11 h-11 rounded-full bg-rose-600/20 border border-rose-500/40 flex items-center justify-center font-display font-bold text-rose-300 text-base shrink-0">
+                  <div className="w-11 h-11 rounded-full bg-white/10 border border-white/25 flex items-center justify-center font-display font-bold text-white text-base shrink-0">
                     {(displayName || user.email || 'G').charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0">
@@ -857,7 +853,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder="First and last name"
-                    className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-rose-500"
+                    className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                   />
                 </div>
 
@@ -873,7 +869,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       value={mobile}
                       onChange={(e) => setMobile(e.target.value)}
                       placeholder="010XXXXXXXX"
-                      className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-rose-500"
+                      className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
                     />
                   </div>
                   <div>
@@ -887,7 +883,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
                       placeholder="Qena"
-                      className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-rose-500"
+                      className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                     />
                   </div>
                 </div>
@@ -900,7 +896,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     id="prof-genre"
                     value={favoriteGenre}
                     onChange={(e) => setFavoriteGenre(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-rose-500"
+                    className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                   >
                     {GENRE_OPTIONS.map((g) => (
                       <option key={g} value={g}>
@@ -921,7 +917,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
                     placeholder="Front-row fan at Qena Nile Corniche..."
-                    className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500 resize-none"
+                    className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50 resize-none"
                   />
                 </div>
 
@@ -941,7 +937,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   <button
                     type="submit"
                     disabled={profileBusy}
-                    className="flex-1 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-sm font-semibold text-white transition-colors"
+                    className="flex-1 py-2.5 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors"
                   >
                     {profileBusy ? 'Saving...' : 'Save Profile'}
                   </button>
@@ -951,9 +947,9 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       onClose();
                       onOpenTickets();
                     }}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.08] text-sm font-medium text-white"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-white/15 bg-white/[0.04] hover:bg-white/[0.1] text-sm font-medium text-white"
                   >
-                    <Ticket className="w-4 h-4 text-rose-400" />
+                    <Ticket className="w-4 h-4 text-neutral-300" />
                     Tickets
                   </button>
                 </div>
