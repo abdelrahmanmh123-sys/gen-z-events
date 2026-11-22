@@ -1,4 +1,4 @@
-import type { AdminSession, Booking, Concert, Promo, SortOption, TierId, TierPrices } from '../types';
+import type { AdminRole, AdminSession, Booking, Concert, Promo, SortOption, TierId, TierPrices } from '../types';
 
 export const MAX_QTY_PER_ORDER = 6;
 export const MAX_POSTER_DATA_URL_LENGTH = 390000;
@@ -392,57 +392,84 @@ export function computeAdminKpis(concerts: Concert[], bookings: Booking[]) {
   };
 }
 
-export interface StorefrontCollectionInput {
-  dbConcerts: Concert[];
-  dbPromos: Promo[];
-  defaultConcerts: Concert[];
-  defaultPromos: Promo[];
-  siteSeeded: boolean;
-  allLoaded: boolean;
-}
+export type AdminTab = 'dashboard' | 'checkin' | 'offline' | 'schedule' | 'manage' | 'promos' | 'team';
 
-export interface ResolvedStorefrontCollections {
-  concerts: Concert[];
-  promos: Promo[];
-  isLiveInDb: boolean;
-  isLoadingInitial: boolean;
+export interface StaffPermissions {
+  isSuperAdmin: boolean;
+  isGateStaff: boolean;
+  allowedTabs: AdminTab[];
+  defaultTab: AdminTab;
+  canGateCheckIn: boolean;
+  canConfirmPayments: boolean;
+  canDeleteBookings: boolean;
+  canAccessOfflineTickets: boolean;
+  canViewRecentApprovals: boolean;
+  canViewRevenueAnalytics: boolean;
+  canManageConcerts: boolean;
+  canManagePromos: boolean;
+  canManageTeam: boolean;
 }
 
 /**
- * Resolves fan-facing collections strictly from Firestore once the database has
- * been seeded or contains any live document, ensuring admin deletions
- * never fall back to hardcoded defaults.
+ * Resolves strict Role-Based Access Control (RBAC) capabilities for the Staff Portal.
+ * - Super Admin: Full access across all 7 tabs, payment confirmation, deletions, and team management.
+ * - Gate Staff: Strictly restricted to Gate QR Check-In (check-in only, no payment confirmation or deletion),
+ *   Offline Tickets, and Recent Payment & Gate Approvals log.
  */
-export function resolveStorefrontCollections(
-  input: StorefrontCollectionInput,
-): ResolvedStorefrontCollections {
-  const hasAnyLiveDoc = input.dbConcerts.length > 0 || input.dbPromos.length > 0;
-  const isLiveInDb = input.siteSeeded || hasAnyLiveDoc;
-
-  if (!input.allLoaded) {
+export function getStaffPermissions(role: AdminRole | null | undefined): StaffPermissions {
+  if (role === 'Super Admin') {
     return {
-      concerts: input.dbConcerts,
-      promos: input.dbPromos,
-      isLiveInDb,
-      isLoadingInitial: true,
+      isSuperAdmin: true,
+      isGateStaff: false,
+      allowedTabs: ['dashboard', 'checkin', 'offline', 'schedule', 'manage', 'promos', 'team'],
+      defaultTab: 'dashboard',
+      canGateCheckIn: true,
+      canConfirmPayments: true,
+      canDeleteBookings: true,
+      canAccessOfflineTickets: true,
+      canViewRecentApprovals: true,
+      canViewRevenueAnalytics: true,
+      canManageConcerts: true,
+      canManagePromos: true,
+      canManageTeam: true,
     };
   }
-
-  if (!isLiveInDb) {
+  if (role === 'Gate Staff') {
     return {
-      concerts: input.defaultConcerts,
-      promos: input.defaultPromos,
-      isLiveInDb: false,
-      isLoadingInitial: false,
+      isSuperAdmin: false,
+      isGateStaff: true,
+      allowedTabs: ['checkin', 'offline', 'dashboard'],
+      defaultTab: 'checkin',
+      canGateCheckIn: true,
+      canConfirmPayments: false,
+      canDeleteBookings: false,
+      canAccessOfflineTickets: true,
+      canViewRecentApprovals: true,
+      canViewRevenueAnalytics: false,
+      canManageConcerts: false,
+      canManagePromos: false,
+      canManageTeam: false,
     };
   }
-
   return {
-    concerts: input.dbConcerts,
-    promos: input.dbPromos,
-    isLiveInDb: true,
-    isLoadingInitial: false,
+    isSuperAdmin: false,
+    isGateStaff: false,
+    allowedTabs: [],
+    defaultTab: 'checkin',
+    canGateCheckIn: false,
+    canConfirmPayments: false,
+    canDeleteBookings: false,
+    canAccessOfflineTickets: false,
+    canViewRecentApprovals: false,
+    canViewRevenueAnalytics: false,
+    canManageConcerts: false,
+    canManagePromos: false,
+    canManageTeam: false,
   };
+}
+
+export function canAccessAdminTab(role: AdminRole | null | undefined, tab: AdminTab): boolean {
+  return getStaffPermissions(role).allowedTabs.includes(tab);
 }
 
 export interface SignupValidationResult {
@@ -533,8 +560,14 @@ const COMMON_WEAK_PASSWORDS = new Set([
   'iloveyou1',
 ]);
 
+export function toAsciiDigits(raw: string): string {
+  return raw
+    .replace(/[٠-٩]/g, (ch) => String(ch.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (ch) => String(ch.charCodeAt(0) - 0x06f0));
+}
+
 export function normalizeEgyptianMobile(raw: string): string {
-  const cleaned = raw.trim().replace(/[\s\-()]/g, '');
+  const cleaned = toAsciiDigits(raw).trim().replace(/[\s\-()]/g, '');
   if (cleaned.startsWith('+200') && cleaned.length === 14) {
     return cleaned.slice(3);
   }
@@ -612,7 +645,7 @@ export function validateEgyptianMobile(
   const normalized = normalizeEgyptianMobile(raw);
   if (!normalized) {
     if (!required) return { valid: true, normalized: '' };
-    return { valid: false, normalized: '', error: 'Enter your Egyptian mobile number (e.g. 010XXXXXXXX).' };
+    return { valid: false, normalized: '', error: 'Enter your Egyptian mobile number.' };
   }
   if (!/^01[0125]\d{8}$/.test(normalized)) {
     return {
@@ -859,7 +892,7 @@ export function parseBoundedIntInput(
   min: number,
   max: number,
 ): { valid: boolean; value: number } {
-  const trimmed = raw.trim();
+  const trimmed = toAsciiDigits(raw).trim();
   if (!trimmed || !/^\d+$/.test(trimmed)) {
     return { valid: false, value: min };
   }
@@ -868,4 +901,385 @@ export function parseBoundedIntInput(
     return { valid: false, value: min };
   }
   return { valid: true, value: parsed };
+}
+
+// =============================================================================
+// CUSTOM TICKET CATEGORY COLOR UTILITIES
+// =============================================================================
+
+export const DEFAULT_CATEGORY_COLORS: Record<TierId, string> = {
+  Silver: '#94A3B8',
+  Gold: '#FBBF24',
+  VIP: '#F43F5E',
+  Lounge: '#22D3EE',
+};
+
+export function isValidHexColor(raw: string): boolean {
+  return /^#[0-9A-Fa-f]{6}$/.test(raw.trim());
+}
+
+export function normalizeHexColor(raw: string): string | null {
+  let cleaned = raw.trim();
+  if (!cleaned) return null;
+  if (!cleaned.startsWith('#')) {
+    cleaned = `#${cleaned}`;
+  }
+  const shortMatch = /^#([0-9A-Fa-f]{3})$/.exec(cleaned);
+  if (shortMatch) {
+    const [r, g, b] = shortMatch[1].split('');
+    return `#${r}${r}${g}${g}${b}${b}`.toUpperCase();
+  }
+  if (/^#[0-9A-Fa-f]{6}$/.test(cleaned)) {
+    return cleaned.toUpperCase();
+  }
+  return null;
+}
+
+export function validateTierColors(colors: Partial<Record<TierId, string>>): {
+  valid: boolean;
+  normalized?: Record<TierId, string>;
+  error?: string;
+} {
+  const tiers: TierId[] = ['Silver', 'Gold', 'VIP', 'Lounge'];
+  const normalized = {} as Record<TierId, string>;
+  for (const tier of tiers) {
+    const raw = colors[tier];
+    if (typeof raw !== 'string') {
+      return { valid: false, error: `Missing hex color for ${tier} category.` };
+    }
+    const hex = normalizeHexColor(raw);
+    if (!hex) {
+      return {
+        valid: false,
+        error: `Invalid hex color for ${tier} ("${raw}"). Use #RRGGBB format (e.g. #FBBF24).`,
+      };
+    }
+    normalized[tier] = hex;
+  }
+  return { valid: true, normalized };
+}
+
+export function getTierColorHex(
+  concert: Pick<Concert, 'tierColors'> | null | undefined,
+  tier: TierId,
+): string {
+  const candidate = concert?.tierColors?.[tier];
+  if (typeof candidate === 'string') {
+    const normalized = normalizeHexColor(candidate);
+    if (normalized) return normalized;
+  }
+  return DEFAULT_CATEGORY_COLORS[tier];
+}
+
+export function hexToRgba(hex: string, alpha: number): string {
+  const normalized = normalizeHexColor(hex) || '#94A3B8';
+  const r = Number.parseInt(normalized.slice(1, 3), 16);
+  const g = Number.parseInt(normalized.slice(3, 5), 16);
+  const b = Number.parseInt(normalized.slice(5, 7), 16);
+  const safeAlpha = Math.max(0, Math.min(1, Number.isFinite(alpha) ? alpha : 1));
+  return `rgba(${r}, ${g}, ${b}, ${safeAlpha})`;
+}
+
+// =============================================================================
+// OFFLINE TICKET SPREADSHEET PARSER & NORMALIZER
+// =============================================================================
+
+export const MAX_OFFLINE_QTY_PER_ROW = 500;
+export const OFFLINE_USER_ID = 'offline-sale';
+
+export interface ParsedOfflineRowError {
+  rowNumber: number;
+  reason: string;
+}
+
+export interface ParsedOfflineBatchResult {
+  validBookings: Omit<Booking, 'createdAt' | 'updatedAt'>[];
+  errors: ParsedOfflineRowError[];
+  totalTickets: number;
+  paidTickets: number;
+  totalRevenueEgp: number;
+}
+
+function normalizeHeaderKey(key: string): string {
+  return key
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_\-\/.]+/g, '');
+}
+
+function pickColumnValue(row: Record<string, unknown>, aliases: string[]): string {
+  const entries = Object.entries(row);
+  for (const alias of aliases) {
+    const target = normalizeHeaderKey(alias);
+    for (const [k, v] of entries) {
+      if (normalizeHeaderKey(k) === target && v !== undefined && v !== null) {
+        const s = String(v).trim();
+        if (s !== '') return s;
+      }
+    }
+  }
+  return '';
+}
+
+export function normalizeTierValue(raw: string): TierId | null {
+  const clean = raw.trim().toLowerCase();
+  if (!clean) return null;
+  if (clean === 'silver' || clean === 's' || clean === 'regular' || clean === 'standard' || clean === 'فضي' || clean === 'سيلفر') {
+    return 'Silver';
+  }
+  if (clean === 'gold' || clean === 'g' || clean === 'ذهبي' || clean === 'جولد') {
+    return 'Gold';
+  }
+  if (clean === 'vip' || clean === 'v' || clean === 'في اي بي' || clean === 'كبار الشخصيات') {
+    return 'VIP';
+  }
+  if (clean === 'lounge' || clean === 'l' || clean === 'table' || clean === 'لاونج') {
+    return 'Lounge';
+  }
+  return null;
+}
+
+function parseTruthyFlag(raw: string): boolean {
+  const v = raw.trim().toLowerCase();
+  return v === 'yes' || v === 'true' || v === '1' || v === 'y' || v === 'checked' || v === 'checked in' || v === 'نعم';
+}
+
+function sanitizeOfflineBookingCode(raw: string, usedCodes: Set<string>): string {
+  const cleaned = raw
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_\-]/g, '')
+    .slice(0, 32);
+  if (cleaned.length >= 5 && !usedCodes.has(cleaned)) {
+    usedCodes.add(cleaned);
+    return cleaned;
+  }
+  let generated = generateBookingCode();
+  while (usedCodes.has(generated)) {
+    generated = generateBookingCode();
+  }
+  usedCodes.add(generated);
+  return generated;
+}
+
+export function normalizeOfflineMobile(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  // Excel sometimes strips the leading zero from Egyptian numbers (e.g. 1012345678)
+  const normalizedEg = normalizeEgyptianMobile(trimmed);
+  if (normalizedEg.length >= 6 && normalizedEg.length <= 30) {
+    return normalizedEg;
+  }
+  return trimmed.slice(0, 30);
+}
+
+export function parseOfflineTicketRows(
+  rows: Record<string, unknown>[],
+  concert: Concert,
+  adminName: string,
+  existingCodes: Iterable<string> = [],
+): ParsedOfflineBatchResult {
+  const usedCodes = new Set<string>(Array.from(existingCodes, (c) => c.toUpperCase()));
+  const validBookings: Omit<Booking, 'createdAt' | 'updatedAt'>[] = [];
+  const errors: ParsedOfflineRowError[] = [];
+  let totalTickets = 0;
+  let paidTickets = 0;
+  let totalRevenueEgp = 0;
+
+  rows.forEach((row, index) => {
+    const rowNumber = index + 2; // Row 1 is spreadsheet header
+
+    // Ignore completely blank rows
+    const hasAnyValue = Object.values(row).some(
+      (v) => v !== undefined && v !== null && String(v).trim() !== '',
+    );
+    if (!hasAnyValue) return;
+
+    const rawName = pickColumnValue(row, [
+      'Customer Name',
+      'Full Name',
+      'Name',
+      'Buyer',
+      'Buyer Name',
+      'Attendee',
+      'Guest',
+      'Client',
+      'الاسم',
+      'اسم العميل',
+    ]);
+    const rawMobile = pickColumnValue(row, [
+      'Mobile',
+      'Phone',
+      'Customer Mobile',
+      'Phone Number',
+      'Mobile Number',
+      'Tel',
+      'Whatsapp',
+      'رقم الموبايل',
+      'الموبايل',
+      'الهاتف',
+    ]);
+    const rawEmail = pickColumnValue(row, ['Email', 'Customer Email', 'E-mail', 'البريد الالكتروني']);
+    const rawTier = pickColumnValue(row, [
+      'Tier',
+      'Category',
+      'Pass',
+      'Pass Tier',
+      'Ticket Tier',
+      'Ticket Category',
+      'Class',
+      'الفئة',
+    ]);
+    const rawQty = pickColumnValue(row, [
+      'Quantity',
+      'Qty',
+      'Tickets',
+      'Count',
+      'Seats',
+      'Passes',
+      'العدد',
+      'عدد التذاكر',
+    ]);
+    const rawAmount = pickColumnValue(row, [
+      'Total EGP',
+      'Total',
+      'Amount',
+      'Paid',
+      'Amount EGP',
+      'Price',
+      'المبلغ',
+      'الاجمالي',
+    ]);
+    const rawOutlet = pickColumnValue(row, [
+      'Outlet',
+      'POS',
+      'Branch',
+      'Seller',
+      'Source',
+      'Location',
+      'Booth',
+      'Receipt',
+      'Ref',
+      'Transfer Ref',
+      'Reference',
+      'Notes',
+      'المنفذ',
+      'البائع',
+    ]);
+    const rawCode = pickColumnValue(row, ['Booking Code', 'Code', 'Ticket Code', 'Ticket ID', 'ID', 'الكود']);
+    const rawStatus = pickColumnValue(row, ['Payment Status', 'Status', 'الحالة']);
+    const rawCheckedIn = pickColumnValue(row, ['Checked In', 'Check In', 'Entered', 'الدخول']);
+
+    const cleanName = rawName.replace(/\s+/g, ' ').trim().slice(0, 100);
+    if (cleanName.length < 2) {
+      errors.push({ rowNumber, reason: 'Missing or invalid customer name (at least 2 characters).' });
+      return;
+    }
+
+    const cleanMobile = normalizeOfflineMobile(rawMobile);
+    if (cleanMobile.length < 6) {
+      errors.push({
+        rowNumber,
+        reason: `Missing or invalid mobile number for "${cleanName}" (need at least 6 digits).`,
+      });
+      return;
+    }
+
+    const tier = normalizeTierValue(rawTier || 'Silver');
+    if (!tier) {
+      errors.push({
+        rowNumber,
+        reason: `Unknown ticket category "${rawTier}" for "${cleanName}". Use Silver, Gold, VIP, or Lounge.`,
+      });
+      return;
+    }
+
+    const qtyNum = rawQty ? Number(rawQty.replace(/,/g, '')) : 1;
+    if (!Number.isInteger(qtyNum) || qtyNum < 1 || qtyNum > MAX_OFFLINE_QTY_PER_ROW) {
+      errors.push({
+        rowNumber,
+        reason: `Invalid quantity "${rawQty}" for "${cleanName}" (must be an integer 1–${MAX_OFFLINE_QTY_PER_ROW}).`,
+      });
+      return;
+    }
+
+    const unitPrice = getTierUnitPrice(concert, tier);
+    const expectedSubtotal = unitPrice * qtyNum;
+    let totalEgp = expectedSubtotal;
+    let discountEgp = 0;
+
+    if (rawAmount) {
+      const strippedAmount = rawAmount.replace(/[^0-9.\-]/g, '');
+      const cleanedAmount = Number(strippedAmount);
+      if (
+        strippedAmount === '' ||
+        !/^-?\d+(?:\.\d+)?$/.test(strippedAmount) ||
+        !Number.isFinite(cleanedAmount) ||
+        cleanedAmount < 0 ||
+        cleanedAmount > 50000000
+      ) {
+        errors.push({
+          rowNumber,
+          reason: `Invalid total amount "${rawAmount}" for "${cleanName}".`,
+        });
+        return;
+      }
+      totalEgp = Math.round(cleanedAmount);
+      discountEgp = Math.max(0, expectedSubtotal - totalEgp);
+    }
+
+    const cleanEmail = rawEmail.trim().toLowerCase().slice(0, 120);
+    const paymentStatus: 'Paid' | 'Pending' =
+      rawStatus.trim().toLowerCase() === 'pending' || rawStatus.trim().toLowerCase() === 'unpaid'
+        ? 'Pending'
+        : 'Paid';
+    const checkedIn = parseTruthyFlag(rawCheckedIn);
+    const transferRef = (rawOutlet.replace(/\s+/g, ' ').trim() || 'Offline Box Office')
+      .padEnd(3, ' ')
+      .trim()
+      .slice(0, 80);
+    const safeTransferRef = transferRef.length >= 3 ? transferRef : 'Offline Box Office';
+
+    const bookingCode = sanitizeOfflineBookingCode(rawCode, usedCodes);
+
+    validBookings.push({
+      bookingCode,
+      userId: OFFLINE_USER_ID,
+      concertId: concert.id,
+      concertTitle: concert.title.slice(0, 120),
+      concertDate: concert.date.slice(0, 40),
+      concertTime: concert.time.slice(0, 20),
+      concertVenue: concert.venue.slice(0, 140),
+      tier,
+      quantity: qtyNum,
+      unitPrice,
+      promoCode: '',
+      discountEgp,
+      totalEgp,
+      paymentMethod: 'Offline',
+      transferRef: safeTransferRef,
+      paymentStatus,
+      checkedIn,
+      checkedInAt: checkedIn ? 'Excel Import' : '',
+      approvedBy: adminName.trim().slice(0, 100) || 'Admin',
+      approvalMethod: 'Excel Import',
+      customerName: cleanName,
+      customerMobile: cleanMobile,
+      customerEmail: cleanEmail,
+    });
+
+    totalTickets += qtyNum;
+    if (paymentStatus === 'Paid') {
+      paidTickets += qtyNum;
+      totalRevenueEgp += totalEgp;
+    }
+  });
+
+  return {
+    validBookings,
+    errors,
+    totalTickets,
+    paidTickets,
+    totalRevenueEgp,
+  };
 }

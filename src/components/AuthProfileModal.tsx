@@ -35,6 +35,8 @@ import {
   validateProfileUpdateInput,
   validateSignupInput,
 } from '../utils/bookingLogic';
+import { useLanguage } from '../i18n/LanguageContext';
+import { getGenreLabel, localizeKnownMessage } from '../i18n/translations';
 
 export const PENDING_PROFILE_STORAGE_KEY = 'genz_pending_verified_profile';
 
@@ -114,6 +116,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
   onUserMutated,
   onNotify,
 }) => {
+  const { lang, t } = useLanguage();
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -145,8 +148,8 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
-    const t = window.setTimeout(() => setResendCooldown((c) => Math.max(0, c - 1)), 1000);
-    return () => window.clearTimeout(t);
+    const timer = window.setTimeout(() => setResendCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => window.clearTimeout(timer);
   }, [resendCooldown]);
 
   useEffect(() => {
@@ -205,7 +208,12 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
         mobile: signupMobile,
       });
       if (!check.valid || !check.normalized) {
-        setAuthError(check.error || 'Please check your sign-up details.');
+        setAuthError(
+          localizeKnownMessage(
+            check.error || 'Enter your real first and last name (4–60 characters).',
+            lang,
+          ),
+        );
         return;
       }
 
@@ -241,15 +249,15 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
           verificationSent
             ? {
                 type: 'info',
-                text: `Verification link sent to ${cleanEmail}. Open your inbox (or spam folder) and click the link to activate your account.`,
+                text: `${t.verifyLinkSentPrefix} ${cleanEmail}${t.verifyLinkSentSuffix}`,
               }
             : {
                 type: 'error',
-                text: 'Account created, but we could not send the verification email right now. Click Resend Verification Email below.',
+                text: t.verifyLinkFail,
               },
         );
       } catch (err) {
-        setAuthError(formatFriendlyFirebaseError(err));
+        setAuthError(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
       } finally {
         setAuthBusy(false);
       }
@@ -258,11 +266,11 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
 
     const emailCheck = validateEmailAddress(email, { allowDisposable: true });
     if (!emailCheck.valid) {
-      setAuthError('Please enter a valid email address.');
+      setAuthError(localizeKnownMessage('Please enter a valid email address.', lang));
       return;
     }
     if (!password) {
-      setAuthError('Please enter your password.');
+      setAuthError(t.enterPasswordError);
       return;
     }
 
@@ -278,15 +286,15 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
       if (!cred.user.emailVerified) {
         setVerifyFeedback({
           type: 'error',
-          text: 'Your email address is not verified yet. Open the verification link in your inbox or request a fresh link below to activate your account.',
+          text: t.unverifiedSignInError,
         });
         return;
       }
 
-      onNotify('Welcome back to Gen Z Events!');
+      onNotify(t.welcomeBackToast);
       onClose();
     } catch (err) {
-      setAuthError(formatFriendlyFirebaseError(err));
+      setAuthError(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
     } finally {
       setAuthBusy(false);
     }
@@ -297,16 +305,17 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
     setAuthInfo('');
     const emailCheck = validateEmailAddress(email, { allowDisposable: true });
     if (!emailCheck.valid) {
-      setAuthError('Enter your account email address above first, then click Forgot Password.');
+      setAuthError(t.enterEmailFirstReset);
       return;
     }
     setAuthBusy(true);
     try {
       await sendPasswordResetEmail(auth, emailCheck.normalized);
-      setAuthInfo(`Password reset link sent to ${emailCheck.normalized}. Check your inbox or spam folder.`);
-      onNotify(`Password reset email sent to ${emailCheck.normalized}.`);
+      const resetMsg = `${t.resetLinkSentPrefix} ${emailCheck.normalized}${t.resetLinkSentSuffix}`;
+      setAuthInfo(resetMsg);
+      onNotify(resetMsg);
     } catch (err) {
-      setAuthError(formatFriendlyFirebaseError(err));
+      setAuthError(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
     } finally {
       setAuthBusy(false);
     }
@@ -318,10 +327,10 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
     setAuthBusy(true);
     try {
       await signInWithPopup(auth, googleProvider);
-      onNotify('Signed in with Google.');
+      onNotify(t.signedInGoogleToast);
       onClose();
     } catch (err) {
-      setAuthError(formatFriendlyFirebaseError(err));
+      setAuthError(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
     } finally {
       setAuthBusy(false);
     }
@@ -337,12 +346,12 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
       setResendCooldown(30);
       setVerifyFeedback({
         type: 'info',
-        text: `Fresh verification link sent to ${activeUser.email}. Check your inbox and spam folder.`,
+        text: `${t.freshVerifySentPrefix} ${activeUser.email}${t.freshVerifySentSuffix}`,
       });
     } catch (err) {
       setVerifyFeedback({
         type: 'error',
-        text: formatFriendlyFirebaseError(err),
+        text: localizeKnownMessage(formatFriendlyFirebaseError(err), lang),
       });
     } finally {
       setVerifyBusy(false);
@@ -357,7 +366,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
       if (!verified) {
         setVerifyFeedback({
           type: 'error',
-          text: 'Still not verified yet. Open the verification email in your inbox, click the confirmation link, then tap this button again.',
+          text: t.stillNotVerified,
         });
       } else {
         setVerifyFeedback(null);
@@ -380,7 +389,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
       setConfirmPassword('');
       setAuthMode('signup');
       onUserMutated();
-      onNotify('Unverified account removed. You can sign up again with the right email.');
+      onNotify(t.unverifiedRemoved);
     } catch {
       try {
         await signOut(auth);
@@ -388,9 +397,12 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
         setPassword('');
         setConfirmPassword('');
         onUserMutated();
-        onNotify('Signed out of unverified account.');
+        onNotify(t.signedOutUnverified);
       } catch (err) {
-        setVerifyFeedback({ type: 'error', text: formatFriendlyFirebaseError(err) });
+        setVerifyFeedback({
+          type: 'error',
+          text: localizeKnownMessage(formatFriendlyFirebaseError(err), lang),
+        });
       }
     } finally {
       setVerifyBusy(false);
@@ -410,7 +422,13 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
       bio,
     });
     if (!check.valid || !check.normalized) {
-      setProfileStatus({ type: 'error', text: check.error || 'Please check your profile details.' });
+      setProfileStatus({
+        type: 'error',
+        text: localizeKnownMessage(
+          check.error || 'Enter your real first and last name (4–60 characters).',
+          lang,
+        ),
+      });
       return;
     }
 
@@ -432,10 +450,13 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
         },
       );
       onUserMutated();
-      onNotify('Profile saved to your account.');
-      setProfileStatus({ type: 'success', text: 'Profile updated successfully.' });
+      onNotify(t.profileSavedToast);
+      setProfileStatus({ type: 'success', text: t.profileUpdatedStatus });
     } catch (err) {
-      setProfileStatus({ type: 'error', text: formatFriendlyFirebaseError(err) });
+      setProfileStatus({
+        type: 'error',
+        text: localizeKnownMessage(formatFriendlyFirebaseError(err), lang),
+      });
     } finally {
       setProfileBusy(false);
     }
@@ -448,10 +469,10 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
       setEmail('');
       setPassword('');
       setConfirmPassword('');
-      onNotify('Signed out cleanly.');
+      onNotify(t.signedOutToast);
       onClose();
     } catch (err) {
-      const msg = formatFriendlyFirebaseError(err);
+      const msg = localizeKnownMessage(formatFriendlyFirebaseError(err), lang);
       if (isUnverifiedAccount) {
         setVerifyFeedback({ type: 'error', text: msg });
       } else {
@@ -461,12 +482,12 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
   };
 
   const modalTitle = isVerifiedAccount
-    ? 'Fan Profile & Account'
+    ? t.fanProfileAccount
     : isUnverifiedAccount
-      ? 'Verify Your Email'
+      ? t.verifyYourEmail
       : authMode === 'signin'
-        ? 'Sign In'
-        : 'Create Account';
+        ? t.signIn
+        : t.createAccount;
 
   return (
     <div
@@ -488,7 +509,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close account modal"
+            aria-label={t.closeAccountAria}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06]"
           >
             <X className="w-4 h-4" />
@@ -509,7 +530,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  Log In
+                  {t.logIn}
                 </button>
                 <button
                   type="button"
@@ -520,7 +541,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  Sign Up
+                  {t.signUp}
                 </button>
               </div>
 
@@ -543,7 +564,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   <>
                     <div>
                       <label htmlFor="auth-name" className="block text-xs font-medium text-slate-300 mb-1.5">
-                        Full Name <span className="text-rose-400">*</span>
+                        {t.fullName} <span className="text-rose-400">*</span>
                       </label>
                       <input
                         id="auth-name"
@@ -554,53 +575,50 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                         maxLength={60}
                         value={signupName}
                         onChange={(e) => setSignupName(e.target.value)}
-                        placeholder="First and last name (e.g. Nour Hassan)"
-                        className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
+                        className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                       />
                     </div>
                     <div>
                       <label htmlFor="auth-mobile" className="block text-xs font-medium text-slate-300 mb-1.5">
-                        Egyptian Mobile Number <span className="text-rose-400">*</span>
+                        {t.egyptianMobileLabel} <span className="text-rose-400">*</span>
                       </label>
                       <input
                         id="auth-mobile"
                         type="tel"
+                        dir="ltr"
                         autoComplete="tel"
                         required
                         maxLength={20}
                         value={signupMobile}
                         onChange={(e) => setSignupMobile(e.target.value)}
-                        placeholder="010XXXXXXXX"
-                        className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num placeholder:text-slate-500 focus:outline-none focus:border-white/50"
+                        className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
                       />
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        11-digit number starting with 010, 011, 012, or 015.
-                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1">{t.egyptianMobileHint}</p>
                     </div>
                   </>
                 )}
 
                 <div>
                   <label htmlFor="auth-email" className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Email Address <span className="text-rose-400">*</span>
+                    {t.emailAddress} <span className="text-rose-400">*</span>
                   </label>
                   <input
                     id="auth-email"
                     type="email"
+                    dir="ltr"
                     autoComplete="email"
                     required
                     maxLength={120}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@gmail.com"
-                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                   />
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label htmlFor="auth-password" className="block text-xs font-medium text-slate-300">
-                      Password <span className="text-rose-400">*</span>
+                      {t.passwordLabel} <span className="text-rose-400">*</span>
                     </label>
                     {authMode === 'signin' && (
                       <button
@@ -609,7 +627,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                         onClick={() => void handlePasswordReset()}
                         className="text-[11px] font-medium text-neutral-300 hover:text-white underline underline-offset-2 decoration-white/30 disabled:opacity-50"
                       >
-                        Forgot password?
+                        {t.forgotPassword}
                       </button>
                     )}
                   </div>
@@ -622,14 +640,13 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       minLength={authMode === 'signup' ? 8 : 1}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder={authMode === 'signup' ? '8+ chars with letters & numbers' : 'Enter your password'}
-                      className="w-full px-3.5 py-2.5 pr-10 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
+                      className="w-full ps-3.5 pe-10 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                      aria-label={showPassword ? t.hidePasswordAria : t.showPasswordAria}
+                      className="absolute end-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -638,13 +655,13 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   {authMode === 'signup' && (
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
                       <span className={`inline-flex items-center gap-1 ${pwStrength.minLength ? 'text-emerald-400' : 'text-slate-500'}`}>
-                        <Check className="w-3 h-3" /> 8+ characters
+                        <Check className="w-3 h-3" /> {t.pwRuleChars}
                       </span>
                       <span className={`inline-flex items-center gap-1 ${pwStrength.hasLetter ? 'text-emerald-400' : 'text-slate-500'}`}>
-                        <Check className="w-3 h-3" /> Letter
+                        <Check className="w-3 h-3" /> {t.pwRuleLetter}
                       </span>
                       <span className={`inline-flex items-center gap-1 ${pwStrength.hasNumber ? 'text-emerald-400' : 'text-slate-500'}`}>
-                        <Check className="w-3 h-3" /> Number
+                        <Check className="w-3 h-3" /> {t.pwRuleNumber}
                       </span>
                     </div>
                   )}
@@ -653,7 +670,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                 {authMode === 'signup' && (
                   <div>
                     <label htmlFor="auth-confirm" className="block text-xs font-medium text-slate-300 mb-1.5">
-                      Confirm Password <span className="text-rose-400">*</span>
+                      {t.confirmPasswordLabel} <span className="text-rose-400">*</span>
                     </label>
                     <input
                       id="auth-confirm"
@@ -663,16 +680,13 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       minLength={8}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Repeat your password"
-                      className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                     />
                   </div>
                 )}
 
                 {authMode === 'signup' && (
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    We&apos;ll send a verification link to your email. Your account and profile activate only after you verify.
-                  </p>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">{t.signupVerifyNote}</p>
                 )}
 
                 <button
@@ -681,17 +695,17 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   className="w-full py-2.5 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                 >
                   {authBusy
-                    ? 'Please wait...'
+                    ? t.pleaseWait
                     : authMode === 'signin'
-                      ? 'Log In with Email'
-                      : 'Create Account & Send Verification'}
+                      ? t.logInWithEmail
+                      : t.createAccountSendVerify}
                 </button>
               </form>
 
               <div className="relative flex items-center py-1">
                 <div className="flex-1 border-t border-white/10" />
                 <span className="px-3 text-[11px] uppercase tracking-wider text-slate-500">
-                  Or instant verified access
+                  {t.orInstantVerified}
                 </span>
                 <div className="flex-1 border-t border-white/10" />
               </div>
@@ -720,7 +734,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"
                   />
                 </svg>
-                Continue with Google
+                {t.continueWithGoogle}
               </button>
             </div>
           ) : isUnverifiedAccount ? (
@@ -730,13 +744,17 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   <MailCheck className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="font-display font-bold text-base text-white">
-                  Confirm your email to activate your account
+                  {t.confirmEmailHeading}
                 </h3>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  We sent a confirmation link to <strong className="text-white">{user.email}</strong>. Click the link in your inbox (or spam folder), then come back and press the button below.
+                  {t.confirmEmailBodyPrefix}{' '}
+                  <strong className="text-white" dir="ltr">
+                    {user.email}
+                  </strong>
+                  {t.confirmEmailBodySuffix}
                 </p>
                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Your profile is not saved until your email is verified.
+                  {t.confirmEmailProfileNote}
                 </p>
               </div>
 
@@ -765,7 +783,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   className="w-full py-2.5 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors inline-flex items-center justify-center gap-2"
                 >
                   <RefreshCw className={`w-4 h-4 ${verifyBusy ? 'animate-spin' : ''}`} />
-                  {verifyBusy ? 'Checking...' : "I've Verified My Email"}
+                  {verifyBusy ? t.checking : t.iveVerifiedEmail}
                 </button>
 
                 <button
@@ -775,8 +793,8 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   className="w-full py-2.5 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-50 text-xs font-semibold text-white transition-colors"
                 >
                   {resendCooldown > 0
-                    ? `Resend Verification Email (${resendCooldown}s)`
-                    : 'Resend Verification Email'}
+                    ? `${t.resendVerification} (${resendCooldown}s)`
+                    : t.resendVerification}
                 </button>
               </div>
 
@@ -788,7 +806,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   className="inline-flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 disabled:opacity-50"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  Wrong email? Cancel &amp; start over
+                  {t.wrongEmailCancel}
                 </button>
                 <button
                   type="button"
@@ -797,7 +815,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-50"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  Sign Out
+                  {t.signOut}
                 </button>
               </div>
             </div>
@@ -813,7 +831,9 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     <p className="font-semibold text-sm text-white truncate">
                       {displayName || 'Gen Z Fan'}
                     </p>
-                    <p className="text-xs text-slate-400 truncate font-mono-num">{user.email}</p>
+                    <p className="text-xs text-slate-400 truncate font-mono-num" dir="ltr">
+                      {user.email}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -822,7 +842,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/12 text-xs font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] shrink-0"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  Log Out
+                  {t.logOut}
                 </button>
               </div>
 
@@ -830,11 +850,15 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
               <div className="flex items-center justify-between text-xs text-slate-300 bg-[#08090C] border border-white/8 rounded-lg px-3.5 py-2.5">
                 <span className="inline-flex items-center gap-1.5 font-medium text-emerald-400">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  Verified Account
+                  {t.verifiedAccount}
                 </span>
                 <div className="flex items-center gap-4 font-mono-num">
-                  <span>{ticketsCount} Tickets</span>
-                  <span>{favoritesCount} Saved</span>
+                  <span>
+                    {ticketsCount} {t.ticketsWord}
+                  </span>
+                  <span>
+                    {favoritesCount} {t.savedLabel}
+                  </span>
                 </div>
               </div>
 
@@ -842,7 +866,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
               <form onSubmit={handleSaveProfile} noValidate className="space-y-3.5">
                 <div>
                   <label htmlFor="prof-name" className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Full Name
+                    {t.fullName}
                   </label>
                   <input
                     id="prof-name"
@@ -852,7 +876,6 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     maxLength={60}
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="First and last name"
                     className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                   />
                 </div>
@@ -860,21 +883,21 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label htmlFor="prof-mobile" className="block text-xs font-medium text-slate-300 mb-1.5">
-                      Mobile Number
+                      {t.mobileNumber}
                     </label>
                     <input
                       id="prof-mobile"
                       type="tel"
+                      dir="ltr"
                       maxLength={20}
                       value={mobile}
                       onChange={(e) => setMobile(e.target.value)}
-                      placeholder="010XXXXXXXX"
                       className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
                     />
                   </div>
                   <div>
                     <label htmlFor="prof-city" className="block text-xs font-medium text-slate-300 mb-1.5">
-                      City
+                      {t.cityLabel}
                     </label>
                     <input
                       id="prof-city"
@@ -882,7 +905,6 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       maxLength={60}
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
-                      placeholder="Qena"
                       className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                     />
                   </div>
@@ -890,7 +912,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
 
                 <div>
                   <label htmlFor="prof-genre" className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Favorite Music Vibe
+                    {t.favoriteMusicVibe}
                   </label>
                   <select
                     id="prof-genre"
@@ -900,7 +922,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   >
                     {GENRE_OPTIONS.map((g) => (
                       <option key={g} value={g}>
-                        {g}
+                        {getGenreLabel(g, lang)}
                       </option>
                     ))}
                   </select>
@@ -908,7 +930,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
 
                 <div>
                   <label htmlFor="prof-bio" className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Bio / Crew Note
+                    {t.bioCrewNote}
                   </label>
                   <textarea
                     id="prof-bio"
@@ -916,8 +938,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     maxLength={300}
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
-                    placeholder="Front-row fan at Qena Nile Corniche..."
-                    className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50 resize-none"
+                    className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50 resize-none"
                   />
                 </div>
 
@@ -939,7 +960,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     disabled={profileBusy}
                     className="flex-1 py-2.5 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors"
                   >
-                    {profileBusy ? 'Saving...' : 'Save Profile'}
+                    {profileBusy ? t.saving : t.saveProfile}
                   </button>
                   <button
                     type="button"
@@ -950,7 +971,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-white/15 bg-white/[0.04] hover:bg-white/[0.1] text-sm font-medium text-white"
                   >
                     <Ticket className="w-4 h-4 text-neutral-300" />
-                    Tickets
+                    {t.ticketsWord}
                   </button>
                 </div>
               </form>

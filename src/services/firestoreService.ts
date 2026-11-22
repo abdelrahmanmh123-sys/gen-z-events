@@ -1,18 +1,16 @@
 import {
-  collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
-  getDocs,
   runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
   writeBatch,
-  type WriteBatch,
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { DEFAULT_CONCERTS, DEFAULT_PROMOS, PRIMARY_ADMIN_EMAIL } from '../data/defaults';
+import { PRIMARY_ADMIN_EMAIL } from '../data/defaults';
 import type {
   AdminMember,
   AdminRole,
@@ -23,78 +21,6 @@ import type {
   WaitlistEntry,
 } from '../types';
 import { emailToDocId } from '../utils/bookingLogic';
-
-async function attachSiteSeededFlag(batch: WriteBatch): Promise<void> {
-  const settingsRef = doc(db, 'settings', 'site');
-  const snap = await getDoc(settingsRef);
-  if (!snap.exists()) {
-    batch.set(settingsRef, {
-      id: 'site',
-      seeded: true,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-  } else if (snap.data()?.seeded !== true) {
-    batch.update(settingsRef, {
-      seeded: true,
-      updatedAt: serverTimestamp(),
-    });
-  }
-}
-
-export async function seedInitialDatabase(adminEmail: string): Promise<void> {
-  try {
-    const primaryId = emailToDocId(PRIMARY_ADMIN_EMAIL);
-    const [concertsSnap, promosSnap, primaryAdminSnap] = await Promise.all([
-      getDocs(collection(db, 'concerts')),
-      getDocs(collection(db, 'promos')),
-      getDoc(doc(db, 'admins', primaryId)),
-    ]);
-
-    const existingConcertIds = new Set(concertsSnap.docs.map((d) => d.id));
-    const existingPromoCodes = new Set(promosSnap.docs.map((d) => d.id));
-
-    const batch = writeBatch(db);
-
-    for (const concert of DEFAULT_CONCERTS) {
-      if (!existingConcertIds.has(concert.id)) {
-        batch.set(doc(db, 'concerts', concert.id), {
-          ...concert,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
-    }
-
-    for (const promo of DEFAULT_PROMOS) {
-      if (!existingPromoCodes.has(promo.code)) {
-        batch.set(doc(db, 'promos', promo.code), {
-          ...promo,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
-    }
-
-    const primaryRef = doc(db, 'admins', primaryId);
-    if (!primaryAdminSnap.exists()) {
-      batch.set(primaryRef, {
-        id: primaryId,
-        name: 'Lead Organizer',
-        email: PRIMARY_ADMIN_EMAIL,
-        role: 'Super Admin',
-        addedBy: adminEmail || PRIMARY_ADMIN_EMAIL,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
-
-    await attachSiteSeededFlag(batch);
-    await batch.commit();
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'concerts/promos/admins/settings');
-  }
-}
 
 export async function upsertUserProfile(
   uid: string,
@@ -286,16 +212,97 @@ export async function adminDeleteBooking(booking: Booking): Promise<void> {
   }
 }
 
+export async function adminCreateOfflineBooking(
+  booking: Omit<Booking, 'createdAt' | 'updatedAt'>,
+  deductSeats: boolean,
+): Promise<void> {
+  const bookingRef = doc(db, 'bookings', booking.bookingCode);
+  const concertRef = doc(db, 'concerts', booking.concertId);
+  try {
+    await runTransaction(db, async (tx) => {
+      const [existingBookingSnap, freshConcertSnap] = await Promise.all([
+        tx.get(bookingRef),
+        tx.get(concertRef),
+      ]);
+      if (existingBookingSnap.exists()) {
+        throw new Error('Booking code already exists. Please try again.');
+      }
+      tx.set(bookingRef, {
+        ...booking,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      if (deductSeats && booking.paymentStatus === 'Paid' && freshConcertSnap.exists()) {
+        const freshConcert = freshConcertSnap.data() as Concert;
+        tx.update(concertRef, {
+          seatsLeft: Math.max(0, freshConcert.seatsLeft - booking.quantity),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, `bookings/${booking.bookingCode}`);
+  }
+}
+
+export async function adminBulkImportOfflineBookings(
+  concertId: string,
+  bookings: Omit<Booking, 'createdAt' | 'updatedAt'>[],
+  deductSeats: boolean,
+): Promise<{ importedCount: number; deductedTickets: number }> {
+  if (bookings.length === 0) {
+    return { importedCount: 0, deductedTickets: 0 };
+  }
+  const CHUNK_SIZE = 400;
+  try {
+    for (let i = 0; i < bookings.length; i += CHUNK_SIZE) {
+      const chunk = bookings.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      for (const item of chunk) {
+        batch.set(doc(db, 'bookings', item.bookingCode), {
+          ...item,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
+
+    const totalPaidQty = bookings
+      .filter((b) => b.paymentStatus === 'Paid')
+      .reduce((sum, b) => sum + b.quantity, 0);
+
+    let deductedTickets = 0;
+    if (deductSeats && totalPaidQty > 0) {
+      const concertRef = doc(db, 'concerts', concertId);
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(concertRef);
+        if (!snap.exists()) return;
+        const freshConcert = snap.data() as Concert;
+        const nextSeats = Math.max(0, freshConcert.seatsLeft - totalPaidQty);
+        deductedTickets = freshConcert.seatsLeft - nextSeats;
+        tx.update(concertRef, {
+          seatsLeft: nextSeats,
+          updatedAt: serverTimestamp(),
+        });
+      });
+    }
+
+    return { importedCount: bookings.length, deductedTickets };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `bookings/offline-import/${concertId}`);
+  }
+}
+
 export async function adminSaveConcert(
   concert: Omit<Concert, 'createdAt' | 'updatedAt'>,
   isEdit: boolean,
 ): Promise<void> {
   const path = `concerts/${concert.id}`;
   try {
-    const batch = writeBatch(db);
     const ref = doc(db, 'concerts', concert.id);
     if (isEdit) {
-      batch.update(ref, {
+      await updateDoc(ref, {
         title: concert.title,
         artist: concert.artist,
         venue: concert.venue,
@@ -307,6 +314,7 @@ export async function adminSaveConcert(
         genre: concert.genre,
         priceEgp: concert.priceEgp,
         tierPrices: concert.tierPrices,
+        tierColors: concert.tierColors ? concert.tierColors : deleteField(),
         totalSeats: concert.totalSeats,
         seatsLeft: concert.seatsLeft,
         description: concert.description,
@@ -314,14 +322,14 @@ export async function adminSaveConcert(
         updatedAt: serverTimestamp(),
       });
     } else {
-      batch.set(ref, {
-        ...concert,
+      const { tierColors, ...rest } = concert;
+      await setDoc(ref, {
+        ...rest,
+        ...(tierColors ? { tierColors } : {}),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     }
-    await attachSiteSeededFlag(batch);
-    await batch.commit();
   } catch (error) {
     handleFirestoreError(error, isEdit ? OperationType.UPDATE : OperationType.CREATE, path);
   }
@@ -330,10 +338,7 @@ export async function adminSaveConcert(
 export async function adminDeleteConcert(concertId: string): Promise<void> {
   const path = `concerts/${concertId}`;
   try {
-    const batch = writeBatch(db);
-    batch.delete(doc(db, 'concerts', concertId));
-    await attachSiteSeededFlag(batch);
-    await batch.commit();
+    await deleteDoc(doc(db, 'concerts', concertId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -368,10 +373,9 @@ export async function adminSavePromo(
 ): Promise<void> {
   const path = `promos/${promo.code}`;
   try {
-    const batch = writeBatch(db);
     const ref = doc(db, 'promos', promo.code);
     if (isEdit) {
-      batch.update(ref, {
+      await updateDoc(ref, {
         type: promo.type,
         value: promo.value,
         tiers: promo.tiers,
@@ -380,14 +384,12 @@ export async function adminSavePromo(
         updatedAt: serverTimestamp(),
       });
     } else {
-      batch.set(ref, {
+      await setDoc(ref, {
         ...promo,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     }
-    await attachSiteSeededFlag(batch);
-    await batch.commit();
   } catch (error) {
     handleFirestoreError(error, isEdit ? OperationType.UPDATE : OperationType.CREATE, path);
   }
@@ -396,10 +398,7 @@ export async function adminSavePromo(
 export async function adminDeletePromo(code: string): Promise<void> {
   const path = `promos/${code}`;
   try {
-    const batch = writeBatch(db);
-    batch.delete(doc(db, 'promos', code));
-    await attachSiteSeededFlag(batch);
-    await batch.commit();
+    await deleteDoc(doc(db, 'promos', code));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }

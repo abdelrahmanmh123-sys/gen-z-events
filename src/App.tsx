@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { Heart, Search, Shield, SlidersHorizontal } from 'lucide-react';
@@ -14,14 +14,17 @@ import { Header } from './components/Header';
 import { HeroSection } from './components/HeroSection';
 import { PassTiersSection } from './components/PassTiersSection';
 import { TicketsModal } from './components/TicketsModal';
-import { AdminWorkspace } from './components/admin/AdminWorkspace';
-import { DEFAULT_CONCERTS, DEFAULT_PROMOS } from './data/defaults';
+
+const LazyAdminWorkspace = lazy(() =>
+  import('./components/admin/AdminWorkspace').then((mod) => ({ default: mod.AdminWorkspace })),
+);
 import { auth, db, formatFriendlyFirebaseError, handleFirestoreError, OperationType } from './firebase';
+import { useLanguage } from './i18n/LanguageContext';
+import { getGenreLabel, localizeKnownMessage } from './i18n/translations';
 import {
   checkIsEmailAdmin,
   createAdminSession,
   removeAdminSession,
-  seedInitialDatabase,
   touchAdminSession,
   upsertUserProfile,
 } from './services/firestoreService';
@@ -41,12 +44,12 @@ import {
   isEmailVerifiedAdminCandidate,
   isVerifiedFanAccount,
   partitionAdminSessions,
-  resolveStorefrontCollections,
   sortByCreatedAtDesc,
 } from './utils/bookingLogic';
 import { copyTextToClipboard } from './utils/passExport';
 
 export default function App() {
+  const { lang, t } = useLanguage();
   // Auth & Role State
   const [user, setUser] = useState<User | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
@@ -59,8 +62,6 @@ export default function App() {
   const [concertsLoaded, setConcertsLoaded] = useState(false);
   const [dbPromos, setDbPromos] = useState<Promo[]>([]);
   const [promosLoaded, setPromosLoaded] = useState(false);
-  const [siteSeeded, setSiteSeeded] = useState(false);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
 
   // Admin-Only Live Data
@@ -85,7 +86,6 @@ export default function App() {
   // Toast Feedback
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
-  const autoSeededRef = useRef(false);
   const sessionIdRef = useRef(`sess-${Math.random().toString(36).slice(2, 10)}`);
 
   const showToast = useCallback((msg: string) => {
@@ -128,17 +128,17 @@ export default function App() {
       if (isEmailVerifiedAdminCandidate(refreshed)) {
         const member = await checkIsEmailAdmin(refreshed?.email);
         setAdminMember(member);
-        showToast('Email verified! Your account is now active.');
+        showToast(t.toastEmailVerified);
         return true;
       }
       return isVerifiedFanAccount(refreshed);
     } catch (err) {
-      showToast(formatFriendlyFirebaseError(err));
+      showToast(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
       return false;
     }
-  }, [showToast]);
+  }, [showToast, t.toastEmailVerified, lang]);
 
-  // 2. Public Storefront Firestore Listeners
+  // 2. Public Storefront Firestore Listeners (strictly live database records)
   useEffect(() => {
     const unsubConcerts = onSnapshot(
       collection(db, 'concerts'),
@@ -159,51 +159,11 @@ export default function App() {
       (err) => handleFirestoreError(err, OperationType.LIST, 'promos'),
     );
 
-    const unsubSettings = onSnapshot(
-      doc(db, 'settings', 'site'),
-      (snap) => {
-        setSiteSeeded(snap.exists() && snap.data()?.seeded === true);
-        setSettingsLoaded(true);
-      },
-      (err) => handleFirestoreError(err, OperationType.GET, 'settings/site'),
-    );
-
     return () => {
       unsubConcerts();
       unsubPromos();
-      unsubSettings();
     };
   }, []);
-
-  // 3. Auto-seed Firestore ONCE when a verified Admin signs into a brand-new unseeded database
-  useEffect(() => {
-    const allLoaded = settingsLoaded && concertsLoaded && promosLoaded;
-    const isBrandNewEmptyDb =
-      !siteSeeded &&
-      dbConcerts.length === 0 &&
-      dbPromos.length === 0;
-
-    if (adminMember && user?.emailVerified && allLoaded && isBrandNewEmptyDb && !autoSeededRef.current) {
-      autoSeededRef.current = true;
-      void seedInitialDatabase(user.email || '')
-        .then(() => {
-          showToast('Published initial Qena concert lineup to live Firestore.');
-        })
-        .catch((err) => {
-          showToast(formatFriendlyFirebaseError(err));
-        });
-    }
-  }, [
-    adminMember,
-    user,
-    settingsLoaded,
-    concertsLoaded,
-    promosLoaded,
-    siteSeeded,
-    dbConcerts.length,
-    dbPromos.length,
-    showToast,
-  ]);
 
   // 4. Verified Fan Private Profile & Bookings Listeners (email-verified accounts only)
   const isVerifiedUser = isVerifiedFanAccount(user);
@@ -300,6 +260,7 @@ export default function App() {
       return;
     }
 
+    const isSuperAdminRole = adminMember.role === 'Super Admin';
     const sid = sessionIdRef.current;
     const prunedSessionIds = new Set<string>();
 
@@ -308,31 +269,42 @@ export default function App() {
       (snap) => setAdminBookings(sortByCreatedAtDesc(snap.docs.map((d) => d.data() as Booking))),
       (err) => handleFirestoreError(err, OperationType.LIST, 'bookings'),
     );
-    const unsubWaitlist = onSnapshot(
-      collection(db, 'waitlist'),
-      (snap) => setAdminWaitlist(sortByCreatedAtDesc(snap.docs.map((d) => d.data() as WaitlistEntry))),
-      (err) => handleFirestoreError(err, OperationType.LIST, 'waitlist'),
-    );
-    const unsubAdmins = onSnapshot(
-      collection(db, 'admins'),
-      (snap) => setAdminMembers(snap.docs.map((d) => d.data() as AdminMember)),
-      (err) => handleFirestoreError(err, OperationType.LIST, 'admins'),
-    );
-    const unsubSessions = onSnapshot(
-      collection(db, 'adminSessions'),
-      (snap) => {
-        const allSessions = snap.docs.map((d) => d.data() as AdminSession);
-        const { active, stale } = partitionAdminSessions(allSessions);
-        setAdminSessions(active);
-        for (const old of stale) {
-          if (old.id !== sid && !prunedSessionIds.has(old.id)) {
-            prunedSessionIds.add(old.id);
-            void removeAdminSession(old.id);
+
+    let unsubWaitlist: (() => void) | null = null;
+    let unsubAdmins: (() => void) | null = null;
+    let unsubSessions: (() => void) | null = null;
+
+    if (isSuperAdminRole) {
+      unsubWaitlist = onSnapshot(
+        collection(db, 'waitlist'),
+        (snap) => setAdminWaitlist(sortByCreatedAtDesc(snap.docs.map((d) => d.data() as WaitlistEntry))),
+        (err) => handleFirestoreError(err, OperationType.LIST, 'waitlist'),
+      );
+      unsubAdmins = onSnapshot(
+        collection(db, 'admins'),
+        (snap) => setAdminMembers(snap.docs.map((d) => d.data() as AdminMember)),
+        (err) => handleFirestoreError(err, OperationType.LIST, 'admins'),
+      );
+      unsubSessions = onSnapshot(
+        collection(db, 'adminSessions'),
+        (snap) => {
+          const allSessions = snap.docs.map((d) => d.data() as AdminSession);
+          const { active, stale } = partitionAdminSessions(allSessions);
+          setAdminSessions(active);
+          for (const old of stale) {
+            if (old.id !== sid && !prunedSessionIds.has(old.id)) {
+              prunedSessionIds.add(old.id);
+              void removeAdminSession(old.id);
+            }
           }
-        }
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'adminSessions'),
-    );
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'adminSessions'),
+      );
+    } else {
+      setAdminWaitlist([]);
+      setAdminMembers([]);
+      setAdminSessions([]);
+    }
 
     void createAdminSession(
       sid,
@@ -355,9 +327,9 @@ export default function App() {
       window.clearInterval(heartbeatId);
       window.removeEventListener('pagehide', handlePageHide);
       unsubBookings();
-      unsubWaitlist();
-      unsubAdmins();
-      unsubSessions();
+      unsubWaitlist?.();
+      unsubAdmins?.();
+      unsubSessions?.();
       void removeAdminSession(sid);
     };
   }, [adminMember, user?.uid, user?.email, user?.emailVerified, adminPortalOpen]);
@@ -367,32 +339,22 @@ export default function App() {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
         e.preventDefault();
-        if (adminMember) {
+        if (adminMember && user?.emailVerified) {
           setAdminPortalOpen((v) => !v);
         } else {
           setAuthModalOpen(true);
-          showToast('Sign in with an authorized organizer account to open Staff Portal.');
+          showToast(t.toastNeedOrganizerSignIn);
         }
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [adminMember, showToast]);
+  }, [adminMember, user?.emailVerified, showToast, t.toastNeedOrganizerSignIn]);
 
-  // Derived Storefront Collections — strictly live once DB is seeded or has data
-  const allPublicLoaded = settingsLoaded && concertsLoaded && promosLoaded;
-  const { concerts, promos, isLiveInDb, isLoadingInitial } = useMemo(
-    () =>
-      resolveStorefrontCollections({
-        dbConcerts,
-        dbPromos,
-        defaultConcerts: DEFAULT_CONCERTS,
-        defaultPromos: DEFAULT_PROMOS,
-        siteSeeded,
-        allLoaded: allPublicLoaded,
-      }),
-    [dbConcerts, dbPromos, siteSeeded, allPublicLoaded],
-  );
+  // Storefront Collections — strictly live Firestore documents (no hardcoded seed fallback)
+  const isLoadingInitial = !concertsLoaded || !promosLoaded;
+  const concerts = dbConcerts;
+  const promos = dbPromos;
 
   // Keep open BookingModal in sync if an admin edits or removes that concert
   useEffect(() => {
@@ -400,11 +362,11 @@ export default function App() {
     const latest = concerts.find((c) => c.id === bookingConcert.id);
     if (!latest) {
       setBookingConcert(null);
-      showToast('That concert is no longer on the live lineup.');
+      showToast(t.toastConcertRemoved);
     } else if (latest !== bookingConcert) {
       setBookingConcert(latest);
     }
-  }, [concerts, bookingConcert, showToast]);
+  }, [concerts, bookingConcert, showToast, t.toastConcertRemoved]);
 
   const activePromos = useMemo(() => promos.filter((p) => p.active), [promos]);
   const favorites = profile ? profile.favorites : guestFavorites;
@@ -460,13 +422,13 @@ export default function App() {
           },
         );
       } catch (err) {
-        showToast(formatFriendlyFirebaseError(err));
+        showToast(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
         return;
       }
     } else {
       setGuestFavorites(nextFavs);
     }
-    showToast(exists ? 'Removed from saved shows.' : 'Saved show to favorites.');
+    showToast(exists ? t.toastRemovedFav : t.toastAddedFav);
   };
 
   const handleOpenStaffPortal = () => {
@@ -474,7 +436,7 @@ export default function App() {
       setAdminPortalOpen(true);
     } else {
       setAuthModalOpen(true);
-      showToast('Sign in with a verified organizer account to access Staff Portal.');
+      showToast(t.toastNeedOrganizerSignIn);
     }
   };
 
@@ -483,27 +445,37 @@ export default function App() {
     [profile?.displayName, user?.displayName, authRevision],
   );
 
-  // Full-screen Staff Command Center Mode
+  // Full-screen Staff Command Center Mode (lazy-loaded strictly for verified staff)
   if (adminPortalOpen && adminMember && user?.emailVerified) {
     return (
       <>
-        <AdminWorkspace
-          concerts={dbConcerts}
-          bookings={adminBookings}
-          promos={dbPromos}
-          waitlist={adminWaitlist}
-          admins={adminMembers}
-          sessions={adminSessions}
-          adminName={displayName || adminMember.name}
-          adminEmail={user.email || adminMember.email}
-          onExit={() => setAdminPortalOpen(false)}
-          onNotify={showToast}
-        />
+        <Suspense
+          fallback={
+            <div className="min-h-screen bg-[#08090C] text-slate-300 flex items-center justify-center text-sm">
+              {t.pleaseWait}
+            </div>
+          }
+        >
+          <LazyAdminWorkspace
+            concerts={dbConcerts}
+            bookings={adminBookings}
+            promos={dbPromos}
+            waitlist={adminWaitlist}
+            admins={adminMembers}
+            sessions={adminSessions}
+            adminName={displayName || adminMember.name}
+            adminEmail={user.email || adminMember.email}
+            adminRole={adminMember.role}
+            isVerifiedStaff={Boolean(adminMember && user?.emailVerified)}
+            onExit={() => setAdminPortalOpen(false)}
+            onNotify={showToast}
+          />
+        </Suspense>
         {toast && (
           <div
             role="status"
             aria-live="polite"
-            className="fixed bottom-5 right-5 z-[70] max-w-sm px-4 py-3 rounded-lg bg-[#171A23] border border-white/15 text-xs font-medium text-white shadow-2xl"
+            className="fixed bottom-5 end-5 z-[70] max-w-sm px-4 py-3 rounded-lg bg-[#171A23] border border-white/15 text-xs font-medium text-white shadow-2xl"
           >
             {toast}
           </div>
@@ -518,7 +490,7 @@ export default function App() {
         user={user}
         displayName={displayName}
         ticketCount={userBookings.length}
-        isAdmin={Boolean(adminMember)}
+        isAdmin={Boolean(adminMember && user?.emailVerified)}
         onOpenTickets={() => setTicketsOpen(true)}
         onOpenAuthProfile={() => setAuthModalOpen(true)}
         onOpenAdmin={handleOpenStaffPortal}
@@ -531,7 +503,7 @@ export default function App() {
           onBookConcert={(c) => setBookingConcert(c)}
           onCopyPromo={(code) => {
             void copyTextToClipboard(code).then(() => {
-              showToast(`Copied promo code ${code} — paste it during checkout!`);
+              showToast(`${t.toastCopiedPromoPrefix} ${code} ${t.toastCopiedPromoSuffix}`);
             });
           }}
         />
@@ -541,40 +513,40 @@ export default function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div className="space-y-1.5">
-                <p className="text-xs font-mono-num uppercase tracking-[0.2em] text-neutral-400 font-semibold">
-                  Qena Concert Calendar
+                <p className="text-xs uppercase tracking-[0.2em] rtl:tracking-normal text-neutral-400 font-semibold">
+                  {t.calendarKicker}
                 </p>
                 <h2 className="font-display font-bold text-2xl sm:text-3xl text-white">
-                  Upcoming Live Shows
+                  {t.upcomingLiveShows}
                 </h2>
               </div>
 
               {/* Search & Sort Controls */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
                 <div className="relative flex-1 sm:w-64">
-                  <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Search className="w-4 h-4 text-slate-500 absolute start-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="search"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search artist, show, or venue..."
-                    aria-label="Search concerts"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-lg bg-[#101218] border border-white/12 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
+                    placeholder={t.searchConcertsPlaceholder}
+                    aria-label={t.searchConcertsAria}
+                    className="w-full ps-10 pe-3.5 py-2.5 rounded-lg bg-[#101218] border border-white/12 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white/50"
                   />
                 </div>
 
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1 sm:flex-initial">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400 absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <select
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as SortOption)}
-                      aria-label="Sort concerts"
-                      className="w-full pl-8 pr-3 py-2.5 rounded-lg bg-[#101218] border border-white/12 text-xs font-medium text-white focus:outline-none focus:border-white/50"
+                      aria-label={t.sortConcertsAria}
+                      className="w-full ps-8 pe-3 py-2.5 rounded-lg bg-[#101218] border border-white/12 text-xs font-medium text-white focus:outline-none focus:border-white/50"
                     >
-                      <option value="date-asc">Soonest First</option>
-                      <option value="price-asc">Price: Low to High</option>
-                      <option value="price-desc">Price: High to Low</option>
+                      <option value="date-asc">{t.sortSoonest}</option>
+                      <option value="price-asc">{t.sortPriceAsc}</option>
+                      <option value="price-desc">{t.sortPriceDesc}</option>
                     </select>
                   </div>
 
@@ -589,7 +561,7 @@ export default function App() {
                     }`}
                   >
                     <Heart className={`w-3.5 h-3.5 ${savedOnly ? 'fill-current' : ''}`} />
-                    Saved ({activeFavoriteIds.length})
+                    {t.savedLabel} ({activeFavoriteIds.length})
                   </button>
                 </div>
               </div>
@@ -608,7 +580,7 @@ export default function App() {
                       : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
                   }`}
                 >
-                  {genre}
+                  {getGenreLabel(genre, lang)}
                 </button>
               ))}
             </div>
@@ -626,18 +598,16 @@ export default function App() {
             ) : concerts.length === 0 ? (
               <div className="border border-white/10 bg-[#101218] rounded-xl p-12 text-center space-y-2.5">
                 <p className="font-display font-bold text-lg text-white">
-                  No upcoming concerts scheduled right now
+                  {t.noConcertsTitle}
                 </p>
                 <p className="text-sm text-slate-400 max-w-md mx-auto">
-                  Our Qena stage calendar is being refreshed. Check back soon for the next live lineup drop.
+                  {t.noConcertsBody}
                 </p>
               </div>
             ) : filteredConcerts.length === 0 ? (
               <div className="border border-white/10 bg-[#101218] rounded-xl p-12 text-center space-y-3">
-                <p className="font-display font-bold text-lg text-white">No concerts match your filter</p>
-                <p className="text-sm text-slate-400">
-                  Clear your search or genre selection to view the full Qena winter schedule.
-                </p>
+                <p className="font-display font-bold text-lg text-white">{t.noFilterMatchTitle}</p>
+                <p className="text-sm text-slate-400">{t.noFilterMatchBody}</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -647,7 +617,7 @@ export default function App() {
                   }}
                   className="px-4 py-2 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors"
                 >
-                  Reset Filters
+                  {t.resetFilters}
                 </button>
               </div>
             ) : (
@@ -676,8 +646,8 @@ export default function App() {
           <div className="flex items-center gap-3.5">
             <BrandLogo size="md" />
             <div className="space-y-0.5">
-              <p className="font-display font-bold text-sm text-white">GEN Z EVENTS · QENA</p>
-              <p>InstaPay: 01554118042 · Mobile Wallets: 01007979070 · Upper Egypt Live Productions</p>
+              <p className="font-display font-bold text-sm text-white">{t.brandCity}</p>
+              <p>{t.footerSubtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-5">
@@ -686,14 +656,14 @@ export default function App() {
               onClick={() => setTicketsOpen(true)}
               className="hover:text-white transition-colors"
             >
-              My Tickets
+              {t.myTickets}
             </button>
             <button
               type="button"
               onClick={() => setAuthModalOpen(true)}
               className="hover:text-white transition-colors"
             >
-              {isVerifiedUser ? 'Profile' : user ? 'Verify Email' : 'Sign In'}
+              {isVerifiedUser ? t.profile : user ? t.verifyEmail : t.signIn}
             </button>
             <button
               type="button"
@@ -701,7 +671,7 @@ export default function App() {
               className="inline-flex items-center gap-1.5 text-slate-500 hover:text-amber-300 transition-colors"
             >
               <Shield className="w-3.5 h-3.5" />
-              Staff Portal
+              {t.staffPortal}
             </button>
           </div>
         </div>
@@ -714,13 +684,12 @@ export default function App() {
         promos={promos}
         user={user}
         profile={profile}
-        isLiveInDb={isLiveInDb}
         onRequireAuth={() => {
           setBookingConcert(null);
           setAuthModalOpen(true);
         }}
         onBookingCreated={(code) => {
-          showToast(`Pass reserved (${code})! Open My Tickets to track verification.`);
+          showToast(`${t.toastPassReservedPrefix} (${code})! ${t.toastPassReservedSuffix}`);
           setTicketsOpen(true);
         }}
         onNotify={showToast}
@@ -755,7 +724,7 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-5 right-5 z-[70] max-w-sm px-4 py-3 rounded-lg bg-[#171A23] border border-white/15 text-xs font-medium text-white shadow-2xl"
+          className="fixed bottom-5 end-5 z-[70] max-w-sm px-4 py-3 rounded-lg bg-[#171A23] border border-white/15 text-xs font-medium text-white shadow-2xl"
         >
           {toast}
         </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { MailCheck, Menu, Shield, Ticket, User as UserIcon, X } from 'lucide-react';
+import { Globe, MailCheck, Menu, Shield, Ticket, User as UserIcon, X } from 'lucide-react';
 import type { User } from 'firebase/auth';
+import { useLanguage } from '../i18n/LanguageContext';
 import { isPendingEmailVerification, isVerifiedFanAccount } from '../utils/bookingLogic';
 import { BrandLogo } from './BrandLogo';
 
@@ -23,28 +24,35 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuthProfile,
   onOpenAdmin,
 }) => {
+  const { t, toggleLang } = useLanguage();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isVerifiedUser = isVerifiedFanAccount(user);
   const isPendingVerification = isPendingEmailVerification(user);
 
   const navLinks = [
-    { href: '#lineup', label: 'Lineup' },
-    { href: '#passes', label: 'Pass Tiers' },
+    { href: '#lineup', label: t.navLineup },
+    { href: '#passes', label: t.navPasses },
   ];
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#08090C]/85 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Zone 1: Brand */}
-        <a href="#top" className="flex items-center gap-3 shrink-0 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 rounded-lg">
+        <a
+          href="#top"
+          className="flex items-center gap-3 shrink-0 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 rounded-lg"
+        >
           <BrandLogo size="md" className="group-hover:border-white/40 transition-colors" />
-          <span className="font-display font-extrabold text-base tracking-tight text-white whitespace-nowrap">
-            GEN Z EVENTS
+          <span
+            dir="ltr"
+            className="font-display font-extrabold text-base tracking-tight text-white whitespace-nowrap"
+          >
+            {t.brandName}
           </span>
         </a>
 
         {/* Zone 2: Desktop Navigation */}
-        <nav aria-label="Primary navigation" className="hidden md:flex items-center gap-8">
+        <nav aria-label={t.primaryNavAria} className="hidden md:flex items-center gap-8">
           {navLinks.map((link) => (
             <a
               key={link.href}
@@ -58,6 +66,16 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Zone 3: Actions */}
         <div className="hidden md:flex items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={toggleLang}
+            aria-label={t.switchLangAria}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/15 bg-white/[0.04] hover:bg-white/[0.1] hover:border-white/25 text-xs font-semibold text-white transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          >
+            <Globe className="w-3.5 h-3.5 text-neutral-300" />
+            <span>{t.switchLangLabel}</span>
+          </button>
+
           {isAdmin && (
             <button
               type="button"
@@ -65,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-amber-400/30 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20 text-xs font-semibold transition-colors whitespace-nowrap"
             >
               <Shield className="w-3.5 h-3.5" />
-              Staff Portal
+              {t.staffPortal}
             </button>
           )}
           <button
@@ -74,11 +92,9 @@ export const Header: React.FC<HeaderProps> = ({
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-white/15 bg-white/[0.04] hover:bg-white/[0.1] hover:border-white/25 text-sm font-medium text-white transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
           >
             <Ticket className="w-4 h-4 text-neutral-300" />
-            <span>My Tickets</span>
+            <span>{t.myTickets}</span>
             {ticketCount > 0 && (
-              <span className="font-mono-num text-xs font-bold text-white">
-                ({ticketCount})
-              </span>
+              <span className="font-mono-num text-xs font-bold text-white">({ticketCount})</span>
             )}
           </button>
           <button
@@ -92,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             {isPendingVerification ? <MailCheck className="w-4 h-4" /> : <UserIcon className="w-4 h-4" />}
             <span className="max-w-[130px] truncate">
-              {isVerifiedUser ? displayName || 'Account' : isPendingVerification ? 'Verify Email' : 'Sign In'}
+              {isVerifiedUser ? displayName || t.account : isPendingVerification ? t.verifyEmail : t.signIn}
             </span>
           </button>
         </div>
@@ -101,13 +117,22 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex md:hidden items-center gap-2">
           <button
             type="button"
+            onClick={toggleLang}
+            aria-label={t.switchLangAria}
+            className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] text-xs font-semibold text-white whitespace-nowrap"
+          >
+            <Globe className="w-3.5 h-3.5 text-neutral-300" />
+            <span>{t.switchLangLabel}</span>
+          </button>
+          <button
+            type="button"
             onClick={onOpenTickets}
-            aria-label="My Tickets"
+            aria-label={t.myTickets}
             className="relative p-2 rounded-lg border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] text-white"
           >
             <Ticket className="w-4 h-4 text-white" />
             {ticketCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-[#08090C] text-[10px] font-mono-num font-bold flex items-center justify-center">
+              <span className="absolute -top-1 -end-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-[#08090C] text-[10px] font-mono-num font-bold flex items-center justify-center">
                 {ticketCount}
               </span>
             )}
@@ -115,7 +140,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => setMobileOpen((prev) => !prev)}
-            aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-label={mobileOpen ? t.closeMenuAria : t.openMenuAria}
             aria-expanded={mobileOpen}
             className="p-2 rounded-lg border border-white/12 bg-white/[0.04] text-white"
           >
@@ -154,10 +179,10 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {isPendingVerification ? <MailCheck className="w-4 h-4" /> : <UserIcon className="w-4 h-4" />}
               {isVerifiedUser
-                ? `Profile · ${displayName || 'Account'}`
+                ? `${t.profile} · ${displayName || t.account}`
                 : isPendingVerification
-                  ? 'Verify Your Email'
-                  : 'Sign In / Sign Up'}
+                  ? t.verifyYourEmail
+                  : t.signInSignUp}
             </button>
             <button
               type="button"
@@ -168,7 +193,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] text-sm font-medium text-white"
             >
               <Ticket className="w-4 h-4 text-neutral-300" />
-              My Tickets {ticketCount > 0 ? `(${ticketCount})` : ''}
+              {t.myTickets} {ticketCount > 0 ? `(${ticketCount})` : ''}
             </button>
             {isAdmin && (
               <button
@@ -180,7 +205,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-amber-400/30 bg-amber-400/10 text-amber-300 text-sm font-semibold"
               >
                 <Shield className="w-4 h-4" />
-                Open Staff Portal
+                {t.openStaffPortal}
               </button>
             )}
           </div>

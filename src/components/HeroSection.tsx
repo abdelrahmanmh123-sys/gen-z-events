@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowRight, Calendar, MapPin, Tag } from 'lucide-react';
 import { HERO_IMAGE_PATH } from '../data/defaults';
+import { useLanguage } from '../i18n/LanguageContext';
+import { formatCurrencyEgp } from '../i18n/translations';
 import type { Concert, Promo } from '../types';
 import { computeCountdown, getTierUnitPrice } from '../utils/bookingLogic';
 
@@ -17,6 +19,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   onBookConcert,
   onCopyPromo,
 }) => {
+  const { lang, t } = useLanguage();
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const nextConcertDate = nextConcert?.isoDate ?? '';
@@ -45,55 +48,55 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
   return (
     <section id="top" className="relative overflow-hidden border-b border-white/10">
-      {/* Background Stage Photo with Atmospheric Vignette */}
+      {/* Background Stage Photo with Atmospheric Vignette (flips cleanly in RTL) */}
       <div className="absolute inset-0">
         <img
           src={HERO_IMAGE_PATH}
-          alt="Live concert stage in Qena with crowd lights"
+          alt={t.heroImgAlt}
           className="w-full h-full object-cover object-center opacity-40"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#08090C] via-[#08090C]/85 to-[#08090C]/45" />
+        <div className="absolute inset-0 bg-gradient-to-r rtl:bg-gradient-to-l from-[#08090C] via-[#08090C]/85 to-[#08090C]/45" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#08090C] via-transparent to-[#08090C]/40" />
       </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-12 lg:pt-20 lg:pb-16">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-end">
-          {/* Left Editorial Pitch */}
+          {/* Editorial Pitch */}
           <div className="lg:col-span-7 space-y-6">
-            <p className="text-xs font-mono-num uppercase tracking-[0.22em] text-neutral-300 font-semibold">
-              Qena Live · Winter 2026/27 Season
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] rtl:tracking-normal text-neutral-300">
+              {t.heroKicker}
             </p>
-            <h1 className="font-display font-extrabold text-4xl sm:text-5xl lg:text-[3.75rem] leading-[1.06] tracking-tight text-white [text-wrap:balance]">
-              Upper Egypt&apos;s stage for live sound &amp; night culture.
+            <h1 className="font-display font-extrabold text-4xl sm:text-5xl lg:text-[3.75rem] leading-[1.12] tracking-tight rtl:tracking-normal text-white [text-wrap:balance]">
+              {t.heroTitle}
             </h1>
             <p className="text-base sm:text-lg text-slate-300 max-w-xl leading-relaxed">
-              Reserve Silver, Gold, VIP, or Private Lounge passes across Qena&apos;s flagship open-air arenas with instant QR gate check-in.
+              {t.heroSubtitle}
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <a
                 href="#lineup"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white hover:bg-neutral-200 text-[#08090C] font-semibold text-sm transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
               >
-                Explore Lineup
-                <ArrowRight className="w-4 h-4" />
+                {t.exploreLineup}
+                <ArrowRight className="w-4 h-4 rtl:rotate-180" />
               </a>
               <a
                 href="#passes"
                 className="inline-flex items-center gap-2 px-5 py-3 rounded-lg border border-white/20 bg-white/[0.04] hover:bg-white/[0.1] hover:border-white/35 text-white font-medium text-sm transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
               >
-                Compare Pass Tiers
+                {t.comparePassTiers}
               </a>
             </div>
           </div>
 
-          {/* Right Next-Show Countdown Panel */}
+          {/* Next-Show Countdown Panel */}
           {nextConcert && countdown && (
             <div className="lg:col-span-5">
               <div className="bg-[#101218]/90 backdrop-blur-md border border-white/12 rounded-xl p-5 sm:p-6 space-y-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
-                    <p className="text-[11px] font-mono-num uppercase tracking-[0.18em] text-amber-300 font-semibold">
-                      Next Up in Qena
+                    <p className="text-[11px] uppercase tracking-[0.18em] rtl:tracking-normal text-amber-300 font-semibold">
+                      {t.nextUpInQena}
                     </p>
                     <h2 className="font-display font-bold text-xl text-white leading-snug">
                       {nextConcert.title}
@@ -101,14 +104,18 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     <p className="text-sm text-slate-300">{nextConcert.artist}</p>
                   </div>
                   <span className="font-mono-num text-sm font-bold text-white shrink-0">
-                    {getTierUnitPrice(nextConcert, 'Silver')} EGP+
+                    {lang === 'ar'
+                      ? `من ${formatCurrencyEgp(getTierUnitPrice(nextConcert, 'Silver'), lang)}`
+                      : `${formatCurrencyEgp(getTierUnitPrice(nextConcert, 'Silver'), lang)}+`}
                   </span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
                   <span className="inline-flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-neutral-300" />
-                    {nextConcert.date} · {nextConcert.time}
+                    <span dir="ltr">
+                      {nextConcert.date} · {nextConcert.time}
+                    </span>
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-neutral-300" />
@@ -119,19 +126,19 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 {/* Live Tabular Countdown */}
                 <div className="grid grid-cols-4 gap-2 pt-1">
                   {[
-                    { label: 'Days', value: countdown.days },
-                    { label: 'Hours', value: countdown.hours },
-                    { label: 'Mins', value: countdown.mins },
-                    { label: 'Secs', value: countdown.secs },
+                    { key: 'days', label: t.days, value: countdown.days },
+                    { key: 'hours', label: t.hours, value: countdown.hours },
+                    { key: 'mins', label: t.mins, value: countdown.mins },
+                    { key: 'secs', label: t.secs, value: countdown.secs },
                   ].map((unit) => (
                     <div
-                      key={unit.label}
+                      key={unit.key}
                       className="bg-[#08090C] border border-white/10 rounded-lg py-2.5 text-center"
                     >
                       <div className="font-mono-num text-xl sm:text-2xl font-bold text-white leading-none">
                         {String(unit.value).padStart(2, '0')}
                       </div>
-                      <div className="text-[10px] uppercase tracking-widest text-slate-400 mt-1.5">
+                      <div className="text-[10px] uppercase tracking-widest rtl:tracking-normal text-slate-400 mt-1.5">
                         {unit.label}
                       </div>
                     </div>
@@ -143,7 +150,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   onClick={() => onBookConcert(nextConcert)}
                   className="w-full py-2.5 px-4 rounded-lg bg-white text-[#08090C] hover:bg-neutral-200 font-semibold text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                 >
-                  {nextConcert.seatsLeft > 0 ? 'Book Next Show' : 'Join Waitlist'}
+                  {nextConcert.seatsLeft > 0 ? t.bookNextShow : t.joinWaitlist}
                 </button>
               </div>
             </div>
@@ -153,9 +160,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         {/* Slim Live Promo Strip */}
         {activePromos.length > 0 && (
           <div className="mt-10 pt-5 border-t border-white/10 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
-            <span className="inline-flex items-center gap-1.5 uppercase tracking-[0.16em] text-slate-400 font-semibold">
+            <span className="inline-flex items-center gap-1.5 uppercase tracking-[0.16em] rtl:tracking-normal text-slate-400 font-semibold">
               <Tag className="w-3.5 h-3.5 text-neutral-300" />
-              Active Club Codes
+              {t.activeClubCodes}
             </span>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
               {activePromos.map((promo) => (
@@ -165,7 +172,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   onClick={() => onCopyPromo(promo.code)}
                   className="inline-flex items-center gap-2 text-slate-200 hover:text-white transition-colors group"
                 >
-                  <span className="font-mono-num font-bold text-white group-hover:text-neutral-200 underline decoration-white/40 underline-offset-4">
+                  <span
+                    dir="ltr"
+                    className="font-mono-num font-bold text-white group-hover:text-neutral-200 underline decoration-white/40 underline-offset-4"
+                  >
                     {promo.code}
                   </span>
                   <span className="text-slate-400">{promo.label}</span>

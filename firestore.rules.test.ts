@@ -42,14 +42,50 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.doesNotMatch(rulesText, /isVerifiedPhone|matchesVerifiedPhone|phone_number/);
   });
 
-  it('restricts primary admin and staff directory strictly to verified emails', () => {
+  it('enforces two-tier verified staff RBAC (isSuperAdmin vs isGateStaff vs isStaff)', () => {
     const primaryFn = extractFunctionBody('isPrimaryAdmin');
     assert.match(primaryFn, /isVerified\(\)/);
     assert.match(primaryFn, /weentamalak@gmail\.com/);
 
-    const adminFn = extractFunctionBody('isAdmin');
-    assert.match(adminFn, /isPrimaryAdmin\(\)/);
-    assert.match(adminFn, /isVerified\(\)/);
+    const superFn = extractFunctionBody('isSuperAdmin');
+    assert.match(superFn, /isPrimaryAdmin\(\)/);
+    assert.match(superFn, /isVerified\(\)/);
+    assert.match(superFn, /\.data\.role\s*==\s*'Super Admin'/);
+
+    const gateFn = extractFunctionBody('isGateStaff');
+    assert.match(gateFn, /isVerified\(\)/);
+    assert.match(gateFn, /\.data\.role\s*==\s*'Gate Staff'/);
+
+    const staffFn = extractFunctionBody('isStaff');
+    assert.match(staffFn, /isSuperAdmin\(\)\s*\|\|\s*isGateStaff\(\)/);
+
+    assert.doesNotMatch(rulesText, /function\s+isAdmin\(/);
+  });
+
+  it('restricts Gate Staff strictly to paid-only check-in, offline ticket create, seat deduction, and own session', () => {
+    // Gate Staff cannot confirm payment on booking update
+    assert.match(
+      rulesText,
+      /isGateStaff\(\)\s*&&\s*existing\(\)\.paymentStatus\s*==\s*'Paid'\s*&&\s*incoming\(\)\.paymentStatus\s*==\s*'Paid'/,
+    );
+    assert.match(
+      rulesText,
+      /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\[\s*'checkedIn',\s*'checkedInAt',\s*'approvedBy',\s*'approvalMethod',\s*'updatedAt'\s*\]\)/,
+    );
+    // Gate Staff offline create strictly scoped to offline_box_office + Offline
+    assert.match(
+      rulesText,
+      /isGateStaff\(\)\s*&&\s*incoming\(\)\.userId\s*==\s*'offline_box_office'\s*&&\s*incoming\(\)\.paymentMethod\s*==\s*'Offline'/,
+    );
+    // Gate Staff concert update strictly scoped to seatsLeft decrement
+    assert.match(
+      rulesText,
+      /isGateStaff\(\)\s*&&\s*incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\['seatsLeft',\s*'updatedAt'\]\)\s*&&\s*incoming\(\)\.seatsLeft\s*<=\s*existing\(\)\.seatsLeft/,
+    );
+    // Gate Staff cannot list users, admins, or adminSessions
+    assert.match(rulesText, /match\s+\/users\/\{userId\}[\s\S]*?allow\s+list:\s*if\s+isSuperAdmin\(\);/);
+    assert.match(rulesText, /match\s+\/admins\/\{adminId\}[\s\S]*?allow\s+list:\s*if\s+isSuperAdmin\(\);/);
+    assert.match(rulesText, /match\s+\/adminSessions\/\{sessionId\}[\s\S]*?allow\s+list:\s*if\s+isSuperAdmin\(\);/);
   });
 
   it('binds user profile create and update strictly to verified email token', () => {
@@ -82,7 +118,7 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.ok(concertExistsChecks.length >= 2, 'Both bookings and waitlist must verify parent concert existence');
   });
 
-  it('blocks shadow field injection via hasOnly key allowlists on all 8 entities', () => {
+  it('blocks shadow field injection via hasOnly key allowlists on all 7 active entities', () => {
     const validators = [
       'isValidConcert',
       'isValidBooking',
@@ -91,7 +127,6 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
       'isValidWaitlistEntry',
       'isValidAdminMember',
       'isValidAdminSession',
-      'isValidSiteSettings',
     ];
     for (const fn of validators) {
       assert.ok(rulesText.includes(`function ${fn}(`), `Missing validator ${fn}`);
@@ -138,15 +173,11 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.match(concertFn, /!\('tierColors' in data\)\s*\|\|\s*isValidTierColors\(data\.tierColors\)/);
   });
 
-  it('keeps backstage updates collection permanently removed under default-deny', () => {
+  it('keeps legacy /updates and /settings (seed) collections permanently removed under default-deny', () => {
     assert.doesNotMatch(rulesText, /match\s+\/updates\//);
     assert.doesNotMatch(rulesText, /isValidBackstagePost/);
-  });
-
-  it('locks site settings list queries and restricts writes to verified admins', () => {
-    assert.match(rulesText, /match\s+\/settings\/\{settingId\}/);
-    assert.match(rulesText, /allow\s+list:\s*if\s+false;/);
-    assert.match(rulesText, /isValidSiteSettings\(incoming\(\),\s*settingId\)/);
+    assert.doesNotMatch(rulesText, /match\s+\/settings\//);
+    assert.doesNotMatch(rulesText, /isValidSiteSettings/);
   });
 
   it('aligns emailToDocId regex with client implementation and blocks anonymous accounts', () => {

@@ -1,6 +1,8 @@
 export type TierId = 'Silver' | 'Gold' | 'VIP' | 'Lounge';
 
-export type PaymentMethodId = 'InstaPay' | 'Mobile Wallets';
+export type OnlinePaymentMethodId = 'InstaPay' | 'Mobile Wallets';
+
+export type PaymentMethodId = OnlinePaymentMethodId | 'Offline';
 
 export type PaymentStatus = 'Pending' | 'Paid';
 
@@ -19,7 +21,7 @@ export interface TierMeta {
 }
 
 export interface PaymentMethodMeta {
-  id: PaymentMethodId;
+  id: OnlinePaymentMethodId;
   label: string;
   sub: string;
   destination: string;
@@ -31,6 +33,13 @@ export interface TierPrices {
   Gold: number;
   VIP: number;
   Lounge: number;
+}
+
+export interface TierColors {
+  Silver: string;
+  Gold: string;
+  VIP: string;
+  Lounge: string;
 }
 
 export interface Concert {
@@ -46,6 +55,7 @@ export interface Concert {
   genre: string;
   priceEgp: number;
   tierPrices: TierPrices;
+  tierColors?: TierColors;
   totalSeats: number;
   seatsLeft: number;
   description: string;

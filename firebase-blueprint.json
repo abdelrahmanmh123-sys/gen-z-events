@@ -527,65 +527,36 @@
         "lastSeen",
         "createdAt"
       ]
-    },
-    "SiteSettings": {
-      "title": "SiteSettings",
-      "description": "Global storefront initialization and configuration state.",
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 64,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "seeded": {
-          "type": "boolean"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
-      },
-      "required": ["id", "seeded", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
     "/concerts/{concertId}": {
       "schema": { "$ref": "#/entities/Concert" },
-      "description": "Publicly readable Qena concert catalog; writable only by verified admins."
+      "description": "Publicly readable Qena concert catalog; full writes by verified Super Admins only, and seat-deduction updates by Gate Staff during offline ticket sales."
     },
     "/bookings/{bookingId}": {
       "schema": { "$ref": "#/entities/Booking" },
-      "description": "PII-isolated ticket reservations; fans create pending bookings and read/cancel their own, admins manage payment confirmation and gate check-in."
+      "description": "PII-isolated ticket reservations; fans create pending bookings and read/cancel their own, Super Admins manage payment confirmation and deletions, Gate Staff record offline ticket sales and perform gate check-in on already-paid passes only."
     },
     "/promos/{promoId}": {
       "schema": { "$ref": "#/entities/Promo" },
-      "description": "Publicly readable discount codes; writable only by verified admins."
+      "description": "Publicly readable discount codes; writable only by verified Super Admins."
     },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
-      "description": "Private fan profiles and favorites; strictly readable and writable only by owner or verified admins."
+      "description": "Private fan profiles and favorites; strictly readable and writable only by owner or verified Super Admins."
     },
     "/waitlist/{entryId}": {
       "schema": { "$ref": "#/entities/WaitlistEntry" },
-      "description": "Sold-out concert waitlist entries; fans create/read/delete their own, admins manage all."
+      "description": "Sold-out concert waitlist entries; fans create/read/delete their own, Super Admins manage all."
     },
     "/admins/{adminId}": {
       "schema": { "$ref": "#/entities/AdminMember" },
-      "description": "Authorized staff directory keyed by sanitized email ID; manageable only by verified admins."
+      "description": "Authorized staff directory keyed by sanitized email ID; self-readable by verified staff, listable and manageable only by verified Super Admins."
     },
     "/adminSessions/{sessionId}": {
       "schema": { "$ref": "#/entities/AdminSession" },
-      "description": "Active staff session heartbeats; readable and writable only by verified admins."
-    },
-    "/settings/{settingId}": {
-      "schema": { "$ref": "#/entities/SiteSettings" },
-      "description": "Global site initialization flags; single-doc readable publicly, writable only by verified admins."
+      "description": "Active staff session heartbeats; listable only by verified Super Admins, self-managed by verified staff."
     }
   }
 }

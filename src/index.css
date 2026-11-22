@@ -3,6 +3,7 @@
 @theme {
   --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-arabic: "Cairo", "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
@@ -22,6 +23,16 @@
     font-family: var(--font-display);
   }
 
+  html[lang="ar"],
+  html[lang="ar"] body,
+  html[lang="ar"] h1,
+  html[lang="ar"] h2,
+  html[lang="ar"] h3,
+  html[lang="ar"] .font-display {
+    font-family: var(--font-arabic);
+    letter-spacing: 0;
+  }
+
   .font-mono-num {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
@@ -32,3 +43,8 @@
     cursor: pointer;
   }
 }
+
+html[lang="ar"] :not(.font-mono-num) {
+  letter-spacing: 0 !important;
+}
+

@@ -2,6 +2,12 @@ import QRCode from 'qrcode';
 import { BRAND_LOGO_PATH } from '../data/defaults';
 import type { Booking } from '../types';
 import { fitPosterDimensions, MAX_POSTER_DATA_URL_LENGTH } from './bookingLogic';
+import {
+  computeTicketStubRects,
+  getTicketDesignForTier,
+  TICKET_CANVAS_HEIGHT,
+  TICKET_CANVAS_WIDTH,
+} from './ticketDesign';
 
 export function playGateTone(kind: 'success' | 'warn' | 'error', enabled: boolean) {
   if (!enabled || typeof window === 'undefined') return;
@@ -53,8 +59,9 @@ export function playGateTone(kind: 'success' | 'warn' | 'error', enabled: boolea
 
 export async function generateQrDataUrl(text: string): Promise<string> {
   return QRCode.toDataURL(text, {
-    width: 320,
-    margin: 2,
+    width: 512,
+    margin: 1,
+    errorCorrectionLevel: 'M',
     color: {
       dark: '#08090C',
       light: '#FFFFFF',
@@ -62,147 +69,244 @@ export async function generateQrDataUrl(text: string): Promise<string> {
   });
 }
 
-export async function renderTicketPassPng(booking: Booking): Promise<string> {
+function loadCanvasImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    img.src = src;
+  });
+}
+
+function drawRoundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+export async function renderTicketPassPng(booking: Booking, tierColorHex?: string): Promise<string> {
   const canvas = document.createElement('canvas');
-  canvas.width = 920;
-  canvas.height = 500;
-  const ctx = canvas.getContext('2d');
+  canvas.width = TICKET_CANVAS_WIDTH;
+  canvas.height = TICKET_CANVAS_HEIGHT;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('Canvas context unavailable');
 
-  // Background
-  const bgGrad = ctx.createLinearGradient(0, 0, 920, 500);
-  bgGrad.addColorStop(0, '#050608');
-  bgGrad.addColorStop(0.55, '#0D0F14');
-  bgGrad.addColorStop(1, '#14171F');
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, 920, 500);
+  const design = getTicketDesignForTier(booking.tier);
+  const safeTierHex =
+    typeof tierColorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(tierColorHex)
+      ? tierColorHex
+      : design.accentHex;
+  const rects = computeTicketStubRects(TICKET_CANVAS_WIDTH, TICKET_CANVAS_HEIGHT);
 
-  // Monochrome Accent bar
-  const accentGrad = ctx.createLinearGradient(0, 0, 920, 0);
-  accentGrad.addColorStop(0, '#FFFFFF');
-  accentGrad.addColorStop(1, '#94A3B8');
-  ctx.fillStyle = accentGrad;
-  ctx.fillRect(0, 0, 920, 8);
-
-  // Outer border
-  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(18, 22, 884, 456);
-
-  // Perforation line
-  ctx.setLineDash([7, 7]);
-  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-  ctx.beginPath();
-  ctx.moveTo(610, 32);
-  ctx.lineTo(610, 468);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Official Brand Logo + Header
-  let headerTextX = 46;
+  let drewBackground = false;
   try {
-    await new Promise<void>((resolve, reject) => {
-      const logoImg = new Image();
-      logoImg.onload = () => {
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(46, 44, 38, 38);
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(46, 44, 38, 38);
-        const sx = logoImg.width * 0.16;
-        const sy = logoImg.height * 0.16;
-        const sw = logoImg.width * 0.68;
-        const sh = logoImg.height * 0.68;
-        ctx.drawImage(logoImg, sx, sy, sw, sh, 47, 45, 36, 36);
-        headerTextX = 96;
-        resolve();
-      };
-      logoImg.onerror = () => reject(new Error('Logo draw failed'));
-      logoImg.src = BRAND_LOGO_PATH;
-    });
+    const bgImg = await loadCanvasImage(design.imagePath);
+    ctx.drawImage(bgImg, 0, 0, TICKET_CANVAS_WIDTH, TICKET_CANVAS_HEIGHT);
+    drewBackground = true;
   } catch {
-    // fallback cleanly to text-only header
+    // Fallback cleanly to styled dark ticket card if artwork fails to load
   }
 
-  ctx.fillStyle = '#E5E7EB';
-  ctx.font = 'bold 14px sans-serif';
-  ctx.fillText('GEN Z EVENTS  ·  QENA LIVE', headerTextX, 68);
+  if (!drewBackground) {
+    const bgGrad = ctx.createLinearGradient(0, 0, TICKET_CANVAS_WIDTH, TICKET_CANVAS_HEIGHT);
+    bgGrad.addColorStop(0, '#050608');
+    bgGrad.addColorStop(0.65, '#0D0F14');
+    bgGrad.addColorStop(1, design.stubBottom);
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, TICKET_CANVAS_WIDTH, TICKET_CANVAS_HEIGHT);
 
-  // Concert Title
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = 'bold 34px sans-serif';
-  ctx.fillText(booking.concertTitle.slice(0, 30), 46, 126);
+    ctx.strokeStyle = safeTierHex;
+    ctx.lineWidth = 3;
+    drawRoundedRectPath(ctx, 14, 14, TICKET_CANVAS_WIDTH - 28, TICKET_CANVAS_HEIGHT - 28, 22);
+    ctx.stroke();
 
-  // Venue & Date
-  ctx.fillStyle = '#D1D5DB';
-  ctx.font = '18px sans-serif';
-  ctx.fillText(`${booking.concertDate}  ·  ${booking.concertTime}`, 46, 166);
-  ctx.fillStyle = '#9CA3AF';
-  ctx.font = '16px sans-serif';
-  ctx.fillText(booking.concertVenue.slice(0, 48), 46, 196);
+    ctx.setLineDash([8, 8]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.beginPath();
+    ctx.moveTo(Math.round(TICKET_CANVAS_WIDTH * 0.747), 24);
+    ctx.lineTo(Math.round(TICKET_CANVAS_WIDTH * 0.747), TICKET_CANVAS_HEIGHT - 24);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
-  // Meta grid
-  const drawField = (label: string, val: string, x: number, y: number, color = '#FFFFFF') => {
+    let textX = 56;
+    try {
+      const logoImg = await loadCanvasImage(BRAND_LOGO_PATH);
+      ctx.drawImage(logoImg, 56, 46, 52, 52);
+      textX = 124;
+    } catch {
+      // text-only header fallback
+    }
+    ctx.fillStyle = '#E5E7EB';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(`GEN Z EVENTS  ·  ${design.label}`, textX, 78);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 42px sans-serif';
+    ctx.fillText(booking.concertTitle.slice(0, 34), 56, 178);
+
+    ctx.fillStyle = '#D1D5DB';
+    ctx.font = '22px sans-serif';
+    ctx.fillText(`${booking.concertDate}  ·  ${booking.concertTime}`, 56, 226);
     ctx.fillStyle = '#9CA3AF';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText(label, x, y);
-    ctx.fillStyle = color;
-    ctx.font = 'bold 19px monospace';
-    ctx.fillText(val, x, y + 26);
-  };
+    ctx.font = '20px sans-serif';
+    ctx.fillText(booking.concertVenue.slice(0, 52), 56, 264);
 
-  drawField('PASS TIER', booking.tier.toUpperCase(), 46, 252, '#FBBF24');
-  drawField('ADMITS', `${booking.quantity} GUEST${booking.quantity > 1 ? 'S' : ''}`, 230, 252);
-  drawField('TOTAL PAID', `${booking.totalEgp.toLocaleString()} EGP`, 400, 252, '#34D399');
+    ctx.fillStyle = safeTierHex;
+    ctx.font = 'bold 24px monospace';
+    ctx.fillText(`${booking.tier.toUpperCase()}  ·  ${booking.quantity}x  ·  ${booking.totalEgp.toLocaleString('en-US')} EGP`, 56, 344);
 
-  drawField('TICKET HOLDER', booking.customerName.slice(0, 24), 46, 340);
-  drawField('PAYMENT', booking.paymentStatus.toUpperCase(), 400, 340, booking.paymentStatus === 'Paid' ? '#34D399' : '#FBBF24');
+    ctx.fillStyle = '#E5E7EB';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText(booking.customerName.slice(0, 34), 56, 404);
+  }
 
-  // Footer note
-  ctx.fillStyle = '#6B7280';
-  ctx.font = '13px sans-serif';
-  ctx.fillText(`Booking Ref: ${booking.bookingCode}  ·  Transfer: ${booking.transferRef}`, 46, 444);
+  // Seamlessly replace ZONE / ROW / SEAT / BARCODE / serial area on the right stub
+  // by smoothly interpolating each column from the clean row above ZONE to the clean row below serial.
+  let blendedStub = false;
+  if (drewBackground) {
+    try {
+      const { x, y, w, h } = rects.patch;
+      const topStrip = ctx.getImageData(x, Math.max(0, y - 2), w, 1).data;
+      const botStrip = ctx.getImageData(x, Math.min(TICKET_CANVAS_HEIGHT - 1, y + h), w, 1).data;
+      const existing = ctx.getImageData(x, y, w, h);
+      const out = existing.data;
+      const edgeFeather = 8;
 
-  // Right stub QR panel
-  ctx.fillStyle = '#9CA3AF';
-  ctx.font = 'bold 12px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('GATE SCAN PASS', 756, 74);
+      for (let row = 0; row < h; row++) {
+        // Ease-out curve matches the artwork's upper-center radial spotlight falloff
+        const rawT = h > 1 ? row / (h - 1) : 0;
+        const t = Math.pow(rawT, 0.72);
+        for (let col = 0; col < w; col++) {
+          const sIdx = col * 4;
+          const dIdx = (row * w + col) * 4;
+          const r = Math.round(topStrip[sIdx] + (botStrip[sIdx] - topStrip[sIdx]) * t);
+          const g = Math.round(topStrip[sIdx + 1] + (botStrip[sIdx + 1] - topStrip[sIdx + 1]) * t);
+          const b = Math.round(topStrip[sIdx + 2] + (botStrip[sIdx + 2] - topStrip[sIdx + 2]) * t);
+
+          // Softly feather only the outermost 8px on left/right (well outside the ZONE box)
+          let blend = 1;
+          if (col < edgeFeather) {
+            blend = col / edgeFeather;
+          } else if (col >= w - edgeFeather) {
+            blend = (w - 1 - col) / edgeFeather;
+          }
+
+          if (blend >= 1) {
+            out[dIdx] = r;
+            out[dIdx + 1] = g;
+            out[dIdx + 2] = b;
+            out[dIdx + 3] = 255;
+          } else {
+            out[dIdx] = Math.round(out[dIdx] * (1 - blend) + r * blend);
+            out[dIdx + 1] = Math.round(out[dIdx + 1] * (1 - blend) + g * blend);
+            out[dIdx + 2] = Math.round(out[dIdx + 2] * (1 - blend) + b * blend);
+            out[dIdx + 3] = 255;
+          }
+        }
+      }
+      ctx.putImageData(existing, x, y);
+      blendedStub = true;
+    } catch {
+      // Fall back to radial gradient fill if canvas readback is restricted
+    }
+  }
+
+  if (!blendedStub) {
+    const radGrad = ctx.createRadialGradient(
+      rects.codeText.centerX,
+      rects.patch.y,
+      10,
+      rects.codeText.centerX,
+      rects.patch.y + Math.round(rects.patch.h * 0.2),
+      Math.round(rects.patch.w * 0.85),
+    );
+    radGrad.addColorStop(0, design.stubGlow);
+    radGrad.addColorStop(0.55, design.stubMid);
+    radGrad.addColorStop(1, design.stubBottom);
+    ctx.fillStyle = radGrad;
+    ctx.fillRect(rects.patch.x, rects.patch.y, rects.patch.w, rects.patch.h);
+  }
 
   if (booking.paymentStatus === 'Paid') {
     const qrUrl = await generateQrDataUrl(booking.bookingCode);
-    await new Promise<void>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(646, 98, 220, 220);
-        ctx.drawImage(img, 654, 106, 204, 204);
-        resolve();
-      };
-      img.onerror = () => reject(new Error('QR draw failed'));
-      img.src = qrUrl;
-    });
+    const qrImg = await loadCanvasImage(qrUrl);
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 6;
+    ctx.fillStyle = '#FFFFFF';
+    drawRoundedRectPath(
+      ctx,
+      rects.qrFrame.x,
+      rects.qrFrame.y,
+      rects.qrFrame.size,
+      rects.qrFrame.size,
+      rects.qrFrame.radius,
+    );
+    ctx.fill();
+    ctx.restore();
+
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      qrImg,
+      rects.qrImage.x,
+      rects.qrImage.y,
+      rects.qrImage.size,
+      rects.qrImage.size,
+    );
+    ctx.imageSmoothingEnabled = prevSmooth;
   } else {
-    ctx.fillStyle = 'rgba(245,158,11,0.12)';
-    ctx.fillRect(646, 98, 220, 220);
-    ctx.strokeStyle = 'rgba(245,158,11,0.45)';
-    ctx.strokeRect(646, 98, 220, 220);
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 9, 12, 0.65)';
+    drawRoundedRectPath(
+      ctx,
+      rects.qrFrame.x,
+      rects.qrFrame.y,
+      rects.qrFrame.size,
+      rects.qrFrame.size,
+      rects.qrFrame.radius,
+    );
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
     ctx.fillStyle = '#FBBF24';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText('QR LOCKED', 756, 198);
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText('QR LOCKED', rects.codeText.centerX, rects.qrFrame.y + Math.round(rects.qrFrame.size * 0.46));
     ctx.fillStyle = '#D1D5DB';
-    ctx.font = '13px sans-serif';
-    ctx.fillText('Awaiting Verification', 756, 224);
+    ctx.font = '14px sans-serif';
+    ctx.fillText(
+      'Awaiting Verification',
+      rects.codeText.centerX,
+      rects.qrFrame.y + Math.round(rects.qrFrame.size * 0.6),
+    );
+    ctx.restore();
   }
 
+  // Unique booking code centered cleanly below the QR
+  ctx.save();
+  ctx.textAlign = 'center';
   ctx.fillStyle = '#FFFFFF';
-  ctx.font = 'bold 24px monospace';
-  ctx.fillText(booking.bookingCode, 756, 368);
-
-  ctx.fillStyle = booking.checkedIn ? '#34D399' : '#9CA3AF';
-  ctx.font = 'bold 13px sans-serif';
-  ctx.fillText(booking.checkedIn ? 'CHECKED IN' : 'VALID AT QENA GATE', 756, 404);
-  ctx.textAlign = 'left';
+  ctx.font = `bold ${rects.codeText.fontSize}px monospace`;
+  ctx.fillText(booking.bookingCode, rects.codeText.centerX, rects.codeText.baselineY);
+  ctx.restore();
 
   return canvas.toDataURL('image/png');
 }

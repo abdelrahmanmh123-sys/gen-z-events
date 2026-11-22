@@ -1,6 +1,8 @@
 import React from 'react';
 import { Calendar, Heart, MapPin, Share2 } from 'lucide-react';
 import { HERO_IMAGE_PATH } from '../data/defaults';
+import { useLanguage } from '../i18n/LanguageContext';
+import { formatCurrencyEgp, getGenreLabel } from '../i18n/translations';
 import type { Concert } from '../types';
 import { getTierUnitPrice } from '../utils/bookingLogic';
 
@@ -44,14 +46,17 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
   onToggleFavorite,
   onBook,
 }) => {
+  const { lang, isAr, t } = useLanguage();
   const soldOut = concert.seatsLeft <= 0;
   const startingPrice = getTierUnitPrice(concert, 'Silver');
   const mood = STAGE_MOODS[concert.genre] || STAGE_MOODS['Indie Pop / Rap'];
   const compactDate = concert.date.replace(/,\s*\d{4}$/, '');
 
-  const whatsappShareHref = `https://wa.me/?text=${encodeURIComponent(
-    `${concert.title} — ${concert.artist}\n${concert.date} at ${concert.time}\nVenue: ${concert.venue}, Qena\nPasses from ${startingPrice} EGP on Gen Z Events`,
-  )}`;
+  const shareText = isAr
+    ? `${concert.title} — ${concert.artist}\n${concert.date} الساعة ${concert.time}\nالمكان: ${concert.venue}، قنا\nالتذاكر تبدأ من ${formatCurrencyEgp(startingPrice, 'ar')} عبر Gen Z Events`
+    : `${concert.title} — ${concert.artist}\n${concert.date} at ${concert.time}\nVenue: ${concert.venue}, Qena\nPasses from ${startingPrice.toLocaleString()} EGP on Gen Z Events`;
+
+  const whatsappShareHref = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
 
   return (
     <article className="group flex flex-col bg-[#101218] border border-white/10 hover:border-white/25 rounded-xl overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
@@ -59,7 +64,7 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
       <div className="relative aspect-[16/10] bg-[#161923] overflow-hidden">
         <img
           src={concert.posterUrl || HERO_IMAGE_PATH}
-          alt={`${concert.title} live concert in Qena`}
+          alt={concert.title}
           className={`w-full h-full object-cover ${concert.posterUrl ? 'object-center' : mood.objectPos} group-hover:scale-[1.03] transition-transform duration-500`}
           loading="lazy"
         />
@@ -67,15 +72,15 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
           className={`absolute inset-0 bg-gradient-to-b ${concert.posterUrl ? 'from-black/15 via-[#101218]/25 to-[#101218]' : mood.tint}`}
         />
 
-        {/* Top-Right Action Controls */}
-        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+        {/* Top-End Action Controls */}
+        <div className="absolute top-3 end-3 flex items-center gap-1.5">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               onToggleFavorite(concert.id);
             }}
-            aria-label={isFavorite ? `Remove ${concert.title} from favorites` : `Save ${concert.title} to favorites`}
+            aria-label={`${isFavorite ? t.removeFavAria : t.saveFavAria}: ${concert.title}`}
             className={`w-8 h-8 rounded-lg flex items-center justify-center backdrop-blur-md border transition-colors ${
               isFavorite
                 ? 'bg-white border-white text-[#08090C]'
@@ -89,7 +94,7 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            aria-label={`Share ${concert.title} on WhatsApp`}
+            aria-label={`${t.shareWhatsappAria}: ${concert.title}`}
             className="w-8 h-8 rounded-lg flex items-center justify-center backdrop-blur-md bg-black/55 border border-white/15 text-slate-200 hover:bg-black/80 transition-colors"
           >
             <Share2 className="w-3.5 h-3.5" />
@@ -98,9 +103,9 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
 
         {/* Clean Sold Out Status Tag Only */}
         {soldOut && (
-          <div className="absolute bottom-3 left-4">
-            <span className="text-[11px] font-mono-num font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded bg-black/80 border text-rose-300 border-rose-500/40">
-              Sold Out
+          <div className="absolute bottom-3 start-4">
+            <span className="text-[11px] font-bold uppercase tracking-[0.12em] rtl:tracking-normal px-2 py-0.5 rounded bg-black/80 border text-rose-300 border-rose-500/40">
+              {t.soldOut}
             </span>
           </div>
         )}
@@ -108,11 +113,14 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
 
       {/* Card Body — Crisp Unclipped Metadata & Uniform Baseline */}
       <div className="flex flex-col flex-1 p-5 space-y-3">
-        <div className="flex items-center justify-between gap-2 text-[11px] font-mono-num">
-          <span className="uppercase tracking-[0.1em] text-neutral-300 font-semibold truncate">
-            {concert.genre}
+        <div className="flex items-center justify-between gap-2 text-[11px]">
+          <span className="uppercase tracking-[0.1em] rtl:tracking-normal text-neutral-300 font-semibold truncate">
+            {getGenreLabel(concert.genre, lang)}
           </span>
-          <span className="inline-flex items-center gap-1 text-slate-300 shrink-0 whitespace-nowrap">
+          <span
+            dir="ltr"
+            className="inline-flex items-center gap-1 font-mono-num text-slate-300 shrink-0 whitespace-nowrap"
+          >
             <Calendar className="w-3 h-3 text-slate-500" />
             {compactDate} · {concert.time}
           </span>
@@ -137,11 +145,11 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
         {/* Aligned Price & CTA Footer */}
         <div className="mt-auto pt-4 border-t border-white/8 flex items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
-              Starting From
+            <p className="text-[10px] uppercase tracking-wider rtl:tracking-normal text-slate-500 font-semibold">
+              {t.startingFrom}
             </p>
             <p className="font-mono-num text-base font-bold text-white">
-              {startingPrice.toLocaleString()} EGP
+              {formatCurrencyEgp(startingPrice, lang)}
             </p>
           </div>
           <button
@@ -153,7 +161,7 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
                 : 'bg-white hover:bg-neutral-200 text-[#08090C]'
             }`}
           >
-            {soldOut ? 'Join Waitlist' : 'Book Pass'}
+            {soldOut ? t.joinWaitlist : t.bookPass}
           </button>
         </div>
       </div>

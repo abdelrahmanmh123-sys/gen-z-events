@@ -34,12 +34,18 @@ export class ErrorBoundary extends React.Component<
 
   render() {
     if (this.state.hasError) {
+      const isAr = typeof document !== 'undefined' && document.documentElement.lang === 'ar';
       return (
-        <div className="min-h-screen bg-[#08090C] text-[#F5F6F8] flex items-center justify-center p-6">
+        <div
+          dir={isAr ? 'rtl' : 'ltr'}
+          className="min-h-screen bg-[#08090C] text-[#F5F6F8] flex items-center justify-center p-6"
+        >
           <div className="max-w-md w-full bg-[#101218] border border-white/10 rounded-xl p-6 space-y-4">
             <div className="flex items-center gap-3 text-rose-400">
               <AlertTriangle className="w-5 h-5 shrink-0" />
-              <h2 className="text-lg font-display font-bold text-white">Something went wrong</h2>
+              <h2 className="text-lg font-display font-bold text-white">
+                {isAr ? 'حدث خطأ غير متوقع' : 'Something went wrong'}
+              </h2>
             </div>
             <p className="text-sm text-slate-300 leading-relaxed break-words">{this.state.message}</p>
             <button
@@ -48,7 +54,7 @@ export class ErrorBoundary extends React.Component<
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-[#08090C] text-sm font-semibold transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
-              Reload Gen Z Events
+              {isAr ? 'إعادة تحميل الموقع' : 'Reload Gen Z Events'}
             </button>
           </div>
         </div>

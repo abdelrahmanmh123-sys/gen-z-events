@@ -15,11 +15,13 @@ import type { User } from 'firebase/auth';
 import { PAYMENT_METHODS, TICKET_TIERS } from '../data/defaults';
 import { formatFriendlyFirebaseError } from '../firebase';
 import { createBooking, createWaitlistEntry } from '../services/firestoreService';
-import type { Concert, PaymentMethodId, Promo, TierId, UserProfile } from '../types';
+import type { Concert, OnlinePaymentMethodId, Promo, TierId, UserProfile } from '../types';
 import {
   calculateOrderTotals,
   generateBookingCode,
+  getTierColorHex,
   getTierUnitPrice,
+  hexToRgba,
   isVerifiedFanAccount,
   MAX_QTY_PER_ORDER,
   normalizeEgyptianMobile,
@@ -27,6 +29,14 @@ import {
   validateWaitlistInput,
 } from '../utils/bookingLogic';
 import { copyTextToClipboard } from '../utils/passExport';
+import { useLanguage } from '../i18n/LanguageContext';
+import {
+  formatCurrencyEgp,
+  getGenreLabel,
+  getTierCopy,
+  localizeKnownMessage,
+  PAYMENT_COPY,
+} from '../i18n/translations';
 
 interface BookingModalProps {
   concert: Concert | null;
@@ -34,7 +44,6 @@ interface BookingModalProps {
   promos: Promo[];
   user: User | null;
   profile: UserProfile | null;
-  isLiveInDb: boolean;
   onRequireAuth: () => void;
   onBookingCreated: (bookingCode: string) => void;
   onNotify: (msg: string) => void;
@@ -46,16 +55,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   promos,
   user,
   profile,
-  isLiveInDb,
   onRequireAuth,
   onBookingCreated,
   onNotify,
 }) => {
+  const { lang, t } = useLanguage();
   const [selectedTier, setSelectedTier] = useState<TierId>('Silver');
   const [quantity, setQuantity] = useState(1);
   const [promoInput, setPromoInput] = useState('');
   const [appliedPromo, setAppliedPromo] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId>('InstaPay');
+  const [paymentMethod, setPaymentMethod] = useState<OnlinePaymentMethodId>('InstaPay');
   const [transferRef, setTransferRef] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
@@ -109,7 +118,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const soldOut = concert.seatsLeft <= 0;
   const maxSelectable = MAX_QTY_PER_ORDER;
   const totals = calculateOrderTotals(concert, selectedTier, quantity, appliedPromo, promos);
-  const activePayment = PAYMENT_METHODS.find((m) => m.id === paymentMethod) || PAYMENT_METHODS[0];
+  const activePayment = PAYMENT_COPY[lang][paymentMethod] || PAYMENT_COPY[lang].InstaPay;
+  const selectedTierLabel = getTierCopy(selectedTier, lang).name;
 
   const handleApplyPromo = () => {
     setAppliedPromo(promoInput.trim().toUpperCase());
@@ -122,7 +132,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleCopyDestination = () => {
     void copyTextToClipboard(activePayment.destination).then(() => {
-      onNotify(`Copied ${activePayment.label} number: ${activePayment.destination}`);
+      onNotify(`${t.copiedNumberPrefix} ${activePayment.label}: ${activePayment.destination}`);
     });
   };
 
@@ -133,17 +143,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       onRequireAuth();
       return;
     }
-    if (!isLiveInDb) {
-      setErrorMsg('Concert catalog is initializing. An admin must sign in once to publish the live lineup.');
-      return;
-    }
     const waitlistCheck = validateWaitlistInput({
       name: customerName,
       mobile: customerMobile,
       email: customerEmail,
     });
     if (!waitlistCheck.valid || !waitlistCheck.normalized) {
-      setErrorMsg(waitlistCheck.error || 'Please enter your name and valid Egyptian mobile number.');
+      setErrorMsg(
+        localizeKnownMessage(
+          waitlistCheck.error || 'Please enter a valid Egyptian mobile number.',
+          lang,
+        ),
+      );
       return;
     }
     setSubmitting(true);
@@ -158,10 +169,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         mobile: waitlistCheck.normalized.mobile.slice(0, 30),
         email: waitlistCheck.normalized.email.slice(0, 120),
       });
-      onNotify(`Added to waitlist for ${concert.title}.`);
+      onNotify(`${t.addedWaitlistPrefix} ${concert.title}.`);
       onClose();
     } catch (err) {
-      setErrorMsg(formatFriendlyFirebaseError(err));
+      setErrorMsg(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
     } finally {
       setSubmitting(false);
     }
@@ -174,10 +185,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       onRequireAuth();
       return;
     }
-    if (!isLiveInDb) {
-      setErrorMsg('Live catalog is waiting for initial admin sync. Sign in as Lead Organizer to publish.');
-      return;
-    }
 
     const validation = validateBookingInput({
       customerName,
@@ -188,7 +195,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       seatsLeft: concert.seatsLeft,
     });
     if (!validation.valid) {
-      setErrorMsg(validation.error || 'Please review your booking details.');
+      setErrorMsg(
+        localizeKnownMessage(
+          validation.error || 'Please enter your full name (2–100 characters).',
+          lang,
+        ),
+      );
       return;
     }
 
@@ -223,7 +235,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       onBookingCreated(bookingCode);
       onClose();
     } catch (err) {
-      setErrorMsg(formatFriendlyFirebaseError(err));
+      setErrorMsg(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
     } finally {
       setSubmitting(false);
     }
@@ -234,7 +246,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5"
       role="dialog"
       aria-modal="true"
-      aria-label={`Book passes for ${concert.title}`}
+      aria-label={`${t.bookPass} — ${concert.title}`}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -244,8 +256,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         <div className="px-6 py-4 border-b border-white/10 flex items-start justify-between gap-4 shrink-0">
           <div className="space-y-1">
             <p className="text-[11px] font-mono-num uppercase tracking-[0.16em] text-neutral-400 font-semibold">
-              {concert.genre}
-              {soldOut ? ' · Sold Out' : ''}
+              {getGenreLabel(concert.genre, lang)}
+              {soldOut ? ` · ${t.soldOut}` : ''}
             </p>
             <h2 className="font-display font-bold text-xl text-white">{concert.title}</h2>
             <p className="text-xs text-slate-400">
@@ -255,7 +267,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close booking modal"
+            aria-label={t.closeBookingAria}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06]"
           >
             <X className="w-4 h-4" />
@@ -265,7 +277,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         {soldOut ? (
           <form onSubmit={handleJoinWaitlist} className="p-6 overflow-y-auto space-y-4">
             <div className="p-4 rounded-lg border border-amber-400/30 bg-amber-400/10 text-xs text-amber-100 leading-relaxed">
-              All seats for <strong>{concert.title}</strong> are currently spoken for. Join the Qena Waitlist and our staff will message you immediately if extra passes are released.
+              {t.waitlistNoticeStart} <strong>{concert.title}</strong> {t.waitlistNoticeEnd}
             </div>
             {errorMsg && (
               <div className="p-3 rounded-lg border border-rose-500/35 bg-rose-500/10 text-xs text-rose-200 flex items-start gap-2">
@@ -276,7 +288,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label htmlFor="wl-name" className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Full Name
+                  {t.fullName}
                 </label>
                 <input
                   id="wl-name"
@@ -289,26 +301,27 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </div>
               <div>
                 <label htmlFor="wl-mobile" className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Mobile Number
+                  {t.mobileNumber}
                 </label>
                 <input
                   id="wl-mobile"
                   type="tel"
+                  dir="ltr"
                   required
                   value={customerMobile}
                   onChange={(e) => setCustomerMobile(e.target.value)}
-                  placeholder="010XXXXXXXX"
                   className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num"
                 />
               </div>
             </div>
             <div>
               <label htmlFor="wl-email" className="block text-xs font-medium text-slate-300 mb-1.5">
-                Email Address
+                {t.emailAddress}
               </label>
               <input
                 id="wl-email"
                 type="email"
+                dir="ltr"
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white"
@@ -320,12 +333,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               className="w-full py-3 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors"
             >
               {!user
-                ? 'Sign In to Join Waitlist'
+                ? t.signInToWaitlist
                 : !isVerifiedUser
-                  ? 'Verify Email to Join Waitlist'
+                  ? t.verifyToWaitlist
                   : submitting
-                    ? 'Joining...'
-                    : 'Join Sold-Out Waitlist'}
+                    ? t.joining
+                    : t.joinSoldOutWaitlist}
             </button>
           </form>
         ) : (
@@ -336,11 +349,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-300 bg-[#08090C] border border-white/8 rounded-lg px-4 py-2.5">
                 <span className="inline-flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-neutral-300" />
-                  {concert.date}
+                  <span dir="ltr">{concert.date}</span>
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-neutral-300" />
-                  Show {concert.time} (Doors {concert.doors})
+                  {t.showLabel} <span dir="ltr">{concert.time}</span> ({t.doorsLabel}{' '}
+                  <span dir="ltr">{concert.doors}</span>)
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-neutral-300" />
@@ -358,33 +372,54 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               {/* Step 1: Select Tier */}
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  1. Select Pass Tier
+                  {t.step1SelectTier}
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {TICKET_TIERS.map((tier) => {
                     const price = getTierUnitPrice(concert, tier.id);
                     const active = selectedTier === tier.id;
+                    const tierHex = getTierColorHex(concert, tier.id);
+                    const tierCopy = getTierCopy(tier.id, lang);
                     return (
                       <button
                         key={tier.id}
                         type="button"
+                        aria-pressed={active}
                         onClick={() => setSelectedTier(tier.id)}
-                        className={`text-left p-3 rounded-lg border transition-all ${
+                        className={`text-start p-3 rounded-lg border transition-all ${
                           active
-                            ? `${tier.accentBorder} ${tier.accentBg}`
+                            ? ''
                             : 'border-white/10 bg-[#08090C] hover:border-white/25'
                         }`}
+                        style={
+                          active
+                            ? {
+                                borderColor: tierHex,
+                                backgroundColor: hexToRgba(tierHex, 0.14),
+                              }
+                            : undefined
+                        }
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <span className={`text-xs font-bold ${active ? tier.accentText : 'text-white'}`}>
-                            {tier.name}
+                          <span className="inline-flex items-center gap-1.5 min-w-0">
+                            <span
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: tierHex }}
+                              aria-hidden="true"
+                            />
+                            <span
+                              className="text-xs font-bold truncate"
+                              style={{ color: active ? tierHex : '#FFFFFF' }}
+                            >
+                              {tierCopy.name}
+                            </span>
                           </span>
                           {active && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
                         </div>
                         <p className="font-mono-num text-base font-bold text-white mt-1.5">
-                          {price.toLocaleString()} <span className="text-[11px] font-normal text-slate-400">EGP</span>
+                          {formatCurrencyEgp(price, lang)}
                         </p>
-                        <p className="text-[11px] text-slate-400 mt-1 leading-snug">{tier.perk}</p>
+                        <p className="text-[11px] text-slate-400 mt-1 leading-snug">{tierCopy.perk}</p>
                       </button>
                     );
                   })}
@@ -395,14 +430,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
                 <div className="sm:col-span-4 space-y-1.5">
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    2. Quantity
+                    {t.step2Quantity}
                   </label>
                   <div className="flex items-center justify-between bg-[#08090C] border border-white/12 rounded-lg px-2 py-1.5">
                     <button
                       type="button"
                       onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                       disabled={quantity <= 1}
-                      aria-label="Decrease ticket quantity"
+                      aria-label={t.decreaseQtyAria}
                       className="w-8 h-8 rounded-md flex items-center justify-center text-slate-200 hover:bg-white/10 disabled:opacity-40"
                     >
                       <Minus className="w-4 h-4" />
@@ -412,7 +447,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       type="button"
                       onClick={() => setQuantity((q) => Math.min(maxSelectable, q + 1))}
                       disabled={quantity >= maxSelectable}
-                      aria-label="Increase ticket quantity"
+                      aria-label={t.increaseQtyAria}
                       className="w-8 h-8 rounded-md flex items-center justify-center text-slate-200 hover:bg-white/10 disabled:opacity-40"
                     >
                       <Plus className="w-4 h-4" />
@@ -422,12 +457,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
                 <div className="sm:col-span-8 space-y-1.5">
                   <label htmlFor="booking-promo" className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Promo Code (Optional)
+                    {t.promoCodeOptional}
                   </label>
                   <div className="flex gap-2">
                     <input
                       id="booking-promo"
                       type="text"
+                      dir="ltr"
                       maxLength={32}
                       value={promoInput}
                       onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
@@ -437,15 +473,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                           handleApplyPromo();
                         }
                       }}
-                      placeholder="Try GENZ15 or VIP100"
-                      className="flex-1 px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num uppercase placeholder:text-slate-500 focus:outline-none focus:border-white/50"
+                      className="flex-1 px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num uppercase focus:outline-none focus:border-white/50"
                     />
                     <button
                       type="button"
                       onClick={handleApplyPromo}
                       className="px-4 py-2.5 rounded-lg border border-white/15 bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-white whitespace-nowrap"
                     >
-                      Apply
+                      {t.apply}
                     </button>
                     {appliedPromo && (
                       <button
@@ -453,7 +488,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                         onClick={handleClearPromo}
                         className="px-3 py-2.5 rounded-lg border border-white/10 text-xs text-slate-400 hover:text-white whitespace-nowrap"
                       >
-                        Clear
+                        {t.clear}
                       </button>
                     )}
                   </div>
@@ -462,7 +497,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
               {promoInput.trim() && promoInput.trim().toUpperCase() !== appliedPromo && (
                 <p className="text-xs text-slate-400">
-                  Press Apply to activate promo code <span className="font-mono-num text-white">{promoInput.trim().toUpperCase()}</span>.
+                  {t.pressApplyHintPrefix}{' '}
+                  <span className="font-mono-num text-white" dir="ltr">
+                    {promoInput.trim().toUpperCase()}
+                  </span>
+                  .
                 </p>
               )}
 
@@ -473,31 +512,32 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   }`}
                 >
                   <Tag className="w-3.5 h-3.5" />
-                  {totals.promoResult.message}
+                  {localizeKnownMessage(totals.promoResult.message, lang)}
                 </p>
               )}
 
               {/* Step 3: Payment Method */}
               <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  3. Payment Transfer Method
+                  {t.step3PaymentMethod}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {PAYMENT_METHODS.map((pm) => {
                     const active = paymentMethod === pm.id;
+                    const pmCopy = PAYMENT_COPY[lang][pm.id];
                     return (
                       <button
                         key={pm.id}
                         type="button"
                         onClick={() => setPaymentMethod(pm.id)}
-                        className={`text-left p-3 rounded-lg border transition-colors ${
+                        className={`text-start p-3 rounded-lg border transition-colors ${
                           active
                             ? 'border-white bg-white/[0.08]'
                             : 'border-white/10 bg-[#08090C] hover:border-white/25'
                         }`}
                       >
-                        <p className="text-sm font-semibold text-white">{pm.label}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{pm.sub}</p>
+                        <p className="text-sm font-semibold text-white">{pmCopy.label}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{pmCopy.sub}</p>
                       </button>
                     );
                   })}
@@ -508,8 +548,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <p className="text-xs text-slate-300 leading-relaxed">
                       {activePayment.instructions}
                     </p>
-                    <p className="text-xs font-mono-num font-bold text-white">
-                      Send to: {activePayment.destination}
+                    <p className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                      <span>{t.sendTo}</span>
+                      <span className="font-mono-num" dir="ltr">
+                        {activePayment.destination}
+                      </span>
                     </p>
                   </div>
                   <button
@@ -518,23 +561,23 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-white/12 bg-white/[0.05] hover:bg-white/[0.1] text-xs font-semibold text-white shrink-0 self-start sm:self-center"
                   >
                     <Copy className="w-3.5 h-3.5" />
-                    Copy Number
+                    {t.copyNumber}
                   </button>
                 </div>
 
                 <div>
                   <label htmlFor="booking-ref" className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Transfer Reference / Sender Mobile <span className="text-rose-400">*</span>
+                    {t.transferRefLabel} <span className="text-rose-400">*</span>
                   </label>
                   <input
                     id="booking-ref"
                     type="text"
+                    dir="ltr"
                     required
                     maxLength={80}
                     value={transferRef}
                     onChange={(e) => setTransferRef(e.target.value)}
-                    placeholder="e.g. IP-948210 or 010XXXXXXXX"
-                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num placeholder:text-slate-500 focus:outline-none focus:border-white/50"
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
                   />
                 </div>
               </div>
@@ -542,12 +585,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               {/* Step 4: Ticket Holder Details */}
               <div className="space-y-2.5">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  4. Ticket Holder Details
+                  {t.step4HolderDetails}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label htmlFor="holder-name" className="block text-xs font-medium text-slate-300 mb-1.5">
-                      Full Name
+                      {t.fullName}
                     </label>
                     <input
                       id="holder-name"
@@ -556,37 +599,36 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       maxLength={100}
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="Full Name"
                       className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                     />
                   </div>
                   <div>
                     <label htmlFor="holder-mobile" className="block text-xs font-medium text-slate-300 mb-1.5">
-                      Mobile
+                      {t.mobile}
                     </label>
                     <input
                       id="holder-mobile"
                       type="tel"
+                      dir="ltr"
                       required
                       maxLength={30}
                       value={customerMobile}
                       onChange={(e) => setCustomerMobile(e.target.value)}
-                      placeholder="010XXXXXXXX"
                       className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
                     />
                   </div>
                   <div>
                     <label htmlFor="holder-email" className="block text-xs font-medium text-slate-300 mb-1.5">
-                      Email
+                      {t.email}
                     </label>
                     <input
                       id="holder-email"
                       type="email"
+                      dir="ltr"
                       required
                       maxLength={120}
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
-                      placeholder="you@gmail.com"
                       className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                     />
                   </div>
@@ -599,16 +641,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2 text-xs text-slate-400">
                   <span>
-                    {totals.quantity}x {selectedTier} Pass
+                    {totals.quantity}x {selectedTierLabel}{' '}
+                    {totals.quantity > 1 ? t.passesWord : t.passWord}
                   </span>
                   {totals.discountEgp > 0 && (
-                    <span className="font-mono-num text-emerald-400 font-semibold">
-                      (-{totals.discountEgp.toLocaleString()} EGP {totals.promoResult.code})
+                    <span className="font-mono-num text-emerald-400 font-semibold" dir="ltr">
+                      (-{formatCurrencyEgp(totals.discountEgp, lang)} {totals.promoResult.code})
                     </span>
                   )}
                 </div>
                 <p className="font-mono-num text-xl font-bold text-white leading-tight">
-                  {totals.totalEgp.toLocaleString()} EGP
+                  {formatCurrencyEgp(totals.totalEgp, lang)}
                 </p>
               </div>
 
@@ -618,12 +661,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 className="sm:w-auto w-full px-6 py-3 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
               >
                 {!user
-                  ? 'Sign In to Reserve'
+                  ? t.signInToReserve
                   : !isVerifiedUser
-                    ? 'Verify Email to Reserve'
+                    ? t.verifyToReserve
                     : submitting
-                      ? 'Submitting...'
-                      : `Reserve ${totals.quantity} ${selectedTier} Pass${totals.quantity > 1 ? 'es' : ''}`}
+                      ? t.submitting
+                      : `${t.reserveAction} ${totals.quantity} ${selectedTierLabel} ${
+                          totals.quantity > 1 ? t.passesWord : t.passWord
+                        }`}
               </button>
             </div>
           </form>

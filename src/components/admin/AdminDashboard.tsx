@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   Bar,
   BarChart,
@@ -10,39 +10,57 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Database } from 'lucide-react';
 import { TICKET_TIERS } from '../../data/defaults';
-import { seedInitialDatabase } from '../../services/firestoreService';
-import { formatFriendlyFirebaseError } from '../../firebase';
 import type { Booking, Concert } from '../../types';
+import { getTierColorHex } from '../../utils/bookingLogic';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { formatCurrencyEgp, getTierCopy } from '../../i18n/translations';
 
 interface AdminDashboardProps {
   concerts: Concert[];
   bookings: Booking[];
-  adminEmail: string;
-  onNotify: (msg: string) => void;
+  canViewRevenueAnalytics: boolean;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   concerts,
   bookings,
-  adminEmail,
-  onNotify,
+  canViewRevenueAnalytics,
 }) => {
-  const [busySeed, setBusySeed] = useState(false);
+  const { lang, t } = useLanguage();
 
   const revenueByTier = useMemo(() => {
+    if (!canViewRevenueAnalytics) return [];
     const paid = bookings.filter((b) => b.paymentStatus === 'Paid');
+    const singleConcert = concerts.length === 1 ? concerts[0] : null;
     return TICKET_TIERS.map((tier) => ({
-      name: tier.name,
-      color: tier.colorHex,
+      name: getTierCopy(tier.id, lang).name,
+      color: singleConcert?.tierColors
+        ? getTierColorHex(singleConcert, tier.id)
+        : tier.colorHex,
       value: paid
         .filter((b) => b.tier === tier.id)
         .reduce((sum, b) => sum + b.totalEgp, 0),
     }));
-  }, [bookings]);
+  }, [bookings, concerts, lang, canViewRevenueAnalytics]);
+
+  const channelBreakdown = useMemo(() => {
+    if (!canViewRevenueAnalytics) {
+      return { onlineTickets: 0, onlineRevenue: 0, offlineTickets: 0, offlineRevenue: 0 };
+    }
+    const paid = bookings.filter((b) => b.paymentStatus === 'Paid');
+    const online = paid.filter((b) => b.paymentMethod !== 'Offline');
+    const offline = paid.filter((b) => b.paymentMethod === 'Offline');
+    return {
+      onlineTickets: online.reduce((s, b) => s + b.quantity, 0),
+      onlineRevenue: online.reduce((s, b) => s + b.totalEgp, 0),
+      offlineTickets: offline.reduce((s, b) => s + b.quantity, 0),
+      offlineRevenue: offline.reduce((s, b) => s + b.totalEgp, 0),
+    };
+  }, [bookings, canViewRevenueAnalytics]);
 
   const ticketsByConcert = useMemo(() => {
+    if (!canViewRevenueAnalytics) return [];
     const paid = bookings.filter((b) => b.paymentStatus === 'Paid');
     return concerts.map((c) => ({
       name: c.title.length > 16 ? `${c.title.slice(0, 15)}…` : c.title,
@@ -50,7 +68,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         .filter((b) => b.concertId === c.id)
         .reduce((sum, b) => sum + b.quantity, 0),
     }));
-  }, [concerts, bookings]);
+  }, [concerts, bookings, canViewRevenueAnalytics]);
 
   const recentApprovals = useMemo(() => {
     return bookings
@@ -58,57 +76,76 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .slice(0, 12);
   }, [bookings]);
 
-  const totalTierRevenue = revenueByTier.reduce((s, t) => s + t.value, 0);
-
-  const handleSeedLineup = async () => {
-    setBusySeed(true);
-    try {
-      await seedInitialDatabase(adminEmail);
-      onNotify('Default Qena concerts and promo codes published to Firestore.');
-    } catch (err) {
-      onNotify(formatFriendlyFirebaseError(err));
-    } finally {
-      setBusySeed(false);
-    }
-  };
+  const totalTierRevenue = revenueByTier.reduce((s, item) => s + item.value, 0);
 
   return (
     <div className="space-y-6">
-      {/* Quick Actions Bar */}
+      {/* Section Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-display font-bold text-xl text-white">Analytics &amp; Gate Audit</h2>
-          <p className="text-xs text-slate-400">Live Firestore revenue breakdown and recent staff verification logs.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={busySeed}
-            onClick={() => void handleSeedLineup()}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.08] text-xs font-semibold text-white disabled:opacity-50"
-          >
-            <Database className="w-3.5 h-3.5 text-amber-300" />
-            {busySeed ? 'Seeding...' : 'Seed Default Lineup'}
-          </button>
+          <h2 className="font-display font-bold text-xl text-white">
+            {canViewRevenueAnalytics ? t.analyticsTitle : t.recentApprovalsTitle}
+          </h2>
+          <p className="text-xs text-slate-400">
+            {canViewRevenueAnalytics ? t.analyticsSubtitle : t.recentApprovalsGateSubtitle}
+          </p>
         </div>
       </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Revenue by Tier */}
-        <div className="lg:col-span-5 bg-[#101218] border border-white/10 rounded-xl p-5 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">Paid Revenue by Pass Tier</h3>
-            <span className="font-mono-num text-xs text-slate-400">
-              {totalTierRevenue.toLocaleString()} EGP
-            </span>
+      {canViewRevenueAnalytics && (
+        <>
+          {/* Sales Channel Breakdown (Online vs. Offline) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-[#101218] border border-white/10 rounded-xl p-4 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                  {t.onlineSalesLabel}
+                </p>
+                <p className="font-mono-num text-lg font-bold text-white mt-1">
+                  {formatCurrencyEgp(channelBreakdown.onlineRevenue, lang)}
+                </p>
+              </div>
+              <div className="text-end">
+                <p className="text-[11px] text-slate-500">{t.paidTickets}</p>
+                <p className="font-mono-num text-base font-bold text-emerald-400">
+                  {channelBreakdown.onlineTickets.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="bg-[#101218] border border-white/10 rounded-xl p-4 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                  {t.offlineSalesLabel}
+                </p>
+                <p className="font-mono-num text-lg font-bold text-white mt-1">
+                  {formatCurrencyEgp(channelBreakdown.offlineRevenue, lang)}
+                </p>
+              </div>
+              <div className="text-end">
+                <p className="text-[11px] text-slate-500">{t.paidTickets}</p>
+                <p className="font-mono-num text-base font-bold text-amber-300">
+                  {channelBreakdown.offlineTickets.toLocaleString()}
+                </p>
+              </div>
+            </div>
           </div>
+
+          {/* Charts Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Revenue by Tier */}
+            <div className="lg:col-span-5 bg-[#101218] border border-white/10 rounded-xl p-5 flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-white">{t.paidRevenueByTier}</h3>
+                <span className="font-mono-num text-xs text-slate-400">
+                  {formatCurrencyEgp(totalTierRevenue, lang)}
+                </span>
+              </div>
           {totalTierRevenue === 0 ? (
             <div className="flex-1 min-h-[220px] flex items-center justify-center text-xs text-slate-500 text-center px-4">
-              No confirmed paid sales yet. Confirm pending transfers in Gate QR Check-In to see revenue metrics.
+              {t.noConfirmedSalesYet}
             </div>
           ) : (
-            <div className="h-[220px]">
+            <div dir="ltr" className="h-[220px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -128,11 +165,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <Tooltip
                     contentStyle={{
                       backgroundColor: '#08090C',
-                      border: '1px solid rgba(255,255,255,0.12)',
+                      border: '1px solid rgba(255,255,255,0.16)',
                       borderRadius: '8px',
                       fontSize: '12px',
+                      color: '#F5F6F8',
                     }}
-                    formatter={(val) => [`${Number(val).toLocaleString()} EGP`, 'Revenue']}
+                    itemStyle={{ color: '#F5F6F8' }}
+                    labelStyle={{ color: '#94A3B8' }}
+                    formatter={(val) => [formatCurrencyEgp(Number(val), lang), t.revenueWord]}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -154,15 +194,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* Tickets Sold by Concert */}
         <div className="lg:col-span-7 bg-[#101218] border border-white/10 rounded-xl p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">Paid Passes Sold by Concert</h3>
-            <span className="text-xs text-slate-400">{concerts.length} shows tracked</span>
+            <h3 className="text-sm font-semibold text-white">{t.paidPassesByConcert}</h3>
+            <span className="text-xs text-slate-400">
+              {concerts.length} {t.showsTracked}
+            </span>
           </div>
           {ticketsByConcert.length === 0 ? (
             <div className="flex-1 min-h-[250px] flex items-center justify-center text-xs text-slate-500">
-              No concerts in database yet.
+              {t.noConcertsInDb}
             </div>
           ) : (
-            <div className="h-[260px]">
+            <div dir="ltr" className="h-[260px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={ticketsByConcert} margin={{ top: 8, right: 8, left: -16, bottom: 20 }}>
                   <XAxis
@@ -183,54 +225,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <Tooltip
                     contentStyle={{
                       backgroundColor: '#08090C',
-                      border: '1px solid rgba(255,255,255,0.12)',
+                      border: '1px solid rgba(255,255,255,0.16)',
                       borderRadius: '8px',
                       fontSize: '12px',
+                      color: '#F5F6F8',
                     }}
+                    itemStyle={{ color: '#F5F6F8' }}
+                    labelStyle={{ color: '#94A3B8' }}
                   />
-                  <Bar dataKey="sold" name="Paid Passes" fill="#F5F6F8" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="sold" name={t.paidPassesWord} fill="#F5F6F8" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
-        </div>
-      </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Recent Gate Approvals & Audit Trail */}
       <div className="bg-[#101218] border border-white/10 rounded-xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white">Recent Payment &amp; Gate Approvals</h3>
-          <span className="font-mono-num text-xs text-slate-400">{recentApprovals.length} records</span>
+          <h3 className="text-sm font-semibold text-white">{t.recentApprovalsTitle}</h3>
+          <span className="font-mono-num text-xs text-slate-400">
+            {recentApprovals.length} {t.recordsWord}
+          </span>
         </div>
         {recentApprovals.length === 0 ? (
-          <div className="p-8 text-center text-xs text-slate-500">
-            Approvals and gate check-ins will log here automatically with staff attribution.
-          </div>
+          <div className="p-8 text-center text-xs text-slate-500">{t.noApprovalsYet}</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-start text-xs">
               <thead className="bg-[#0B0D12] text-slate-400 uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="px-4 py-3">Code</th>
-                  <th className="px-4 py-3">Guest</th>
-                  <th className="px-4 py-3">Concert</th>
-                  <th className="px-4 py-3">Approver</th>
-                  <th className="px-4 py-3">Method</th>
-                  <th className="px-4 py-3 text-right">Gate Time</th>
+                  <th className="px-4 py-3 text-start">{t.colCode}</th>
+                  <th className="px-4 py-3 text-start">{t.colGuest}</th>
+                  <th className="px-4 py-3 text-start">{t.colConcert}</th>
+                  <th className="px-4 py-3 text-start">{t.colApprover}</th>
+                  <th className="px-4 py-3 text-start">{t.colMethod}</th>
+                  <th className="px-4 py-3 text-end">{t.colGateTime}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/8">
                 {recentApprovals.map((b) => (
                   <tr key={b.bookingCode} className="hover:bg-white/[0.02]">
-                    <td className="px-4 py-3 font-mono-num font-bold text-white">{b.bookingCode}</td>
+                    <td className="px-4 py-3 font-mono-num font-bold text-white" dir="ltr">
+                      {b.bookingCode}
+                    </td>
                     <td className="px-4 py-3 text-slate-200">
-                      {b.customerName} ({b.quantity}x {b.tier})
+                      {b.customerName} ({b.quantity}x {getTierCopy(b.tier, lang).name})
                     </td>
                     <td className="px-4 py-3 text-slate-400">{b.concertTitle}</td>
                     <td className="px-4 py-3 text-slate-200">{b.approvedBy || '—'}</td>
-                    <td className="px-4 py-3 text-emerald-400">{b.approvalMethod || 'Verified'}</td>
-                    <td className="px-4 py-3 text-right font-mono-num text-slate-400">
-                      {b.checkedInAt || 'Paid Only'}
+                    <td className="px-4 py-3 text-emerald-400">{b.approvalMethod || t.verifiedWord}</td>
+                    <td className="px-4 py-3 text-end font-mono-num text-slate-400">
+                      {b.checkedInAt || t.paidOnly}
                     </td>
                   </tr>
                 ))}

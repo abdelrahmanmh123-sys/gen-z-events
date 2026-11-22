@@ -1,8 +1,26 @@
-import type { Concert, PaymentMethodMeta, Promo, TierMeta } from '../types';
+import type { PaymentMethodMeta, TierColors, TierMeta } from '../types';
 
 export const PRIMARY_ADMIN_EMAIL = 'weentamalak@gmail.com';
 export const HERO_IMAGE_PATH = '/assets/hero-qena.jpg';
 export const BRAND_LOGO_PATH = '/assets/aistudio/IMG-20261121-WA0042_bdfb946a.jpg';
+
+export const DEFAULT_TIER_COLORS: TierColors = {
+  Silver: '#94A3B8',
+  Gold: '#FBBF24',
+  VIP: '#F43F5E',
+  Lounge: '#22D3EE',
+};
+
+export const TIER_COLOR_SWATCHES: ReadonlyArray<{ name: string; hex: string }> = [
+  { name: 'Slate Silver', hex: '#94A3B8' },
+  { name: 'Pure Ice', hex: '#E2E8F0' },
+  { name: 'Amber Gold', hex: '#FBBF24' },
+  { name: 'Sunset Orange', hex: '#FB923C' },
+  { name: 'Stage Rose', hex: '#F43F5E' },
+  { name: 'Electric Violet', hex: '#A78BFA' },
+  { name: 'Nile Cyan', hex: '#22D3EE' },
+  { name: 'Emerald Mint', hex: '#34D399' },
+];
 
 export const TICKET_TIERS: TierMeta[] = [
   {
@@ -51,157 +69,24 @@ export const TICKET_TIERS: TierMeta[] = [
   },
 ];
 
+export const PAYMENT_PHONE_NUMBER = '01041062000';
+export const PAYMENT_WHATSAPP_NUMBER = '201041062000';
+
 export const PAYMENT_METHODS: PaymentMethodMeta[] = [
   {
     id: 'InstaPay',
     label: 'InstaPay',
     sub: 'Instant bank or IPA transfer',
-    destination: '01554118042',
+    destination: PAYMENT_PHONE_NUMBER,
     instructions:
-      'Transfer the total via InstaPay to 01554118042 and paste your transfer reference or sender mobile below.',
+      'Transfer the total via InstaPay to 01041062000 and paste your transfer reference or sender mobile below.',
   },
   {
     id: 'Mobile Wallets',
     label: 'Mobile Wallets',
     sub: 'Vodafone, Orange, Etisalat, WE Pay',
-    destination: '01007979070',
+    destination: PAYMENT_PHONE_NUMBER,
     instructions:
-      'Send the total from any Egyptian Mobile Wallet to 01007979070 and enter your SMS receipt reference or wallet number.',
-  },
-];
-
-export const DEFAULT_PROMOS: Omit<Promo, 'createdAt' | 'updatedAt'>[] = [
-  {
-    code: 'GENZ15',
-    type: 'percent',
-    value: 15,
-    tiers: [],
-    label: '15% Off (Gen Z Club)',
-    active: true,
-  },
-  {
-    code: 'VIP100',
-    type: 'flat',
-    value: 100,
-    tiers: ['VIP', 'Lounge'],
-    label: '100 EGP Off VIP & Lounge',
-    active: true,
-  },
-];
-
-export const DEFAULT_CONCERTS: Omit<Concert, 'createdAt' | 'updatedAt'>[] = [
-  {
-    id: 'qena-01',
-    title: 'Upper Egypt Rising',
-    artist: 'Qena Youth Stage & Indie Guests',
-    venue: 'Qena Cultural Palace Arena',
-    isoDate: '2026-12-04',
-    isoTime: '20:00',
-    date: 'Fri, Dec 4, 2026',
-    time: '8:00 PM',
-    doors: '6:30 PM',
-    genre: 'Indie Pop / Rap',
-    priceEgp: 200,
-    tierPrices: { Silver: 200, Gold: 300, VIP: 450, Lounge: 700 },
-    totalSeats: 150,
-    seatsLeft: 150,
-    description:
-      'Our flagship winter concert in Qena celebrating rising Upper Egypt artists with full concert lighting.',
-    posterUrl: '',
-  },
-  {
-    id: 'qena-02',
-    title: 'Nile Neon Nights',
-    artist: 'DJ Karima & Electronic Live Set',
-    venue: 'Qena Nile Corniche Open Stage',
-    isoDate: '2026-12-11',
-    isoTime: '20:30',
-    date: 'Fri, Dec 11, 2026',
-    time: '8:30 PM',
-    doors: '7:00 PM',
-    genre: 'Electronic / Indie',
-    priceEgp: 250,
-    tierPrices: { Silver: 250, Gold: 360, VIP: 550, Lounge: 850 },
-    totalSeats: 120,
-    seatsLeft: 120,
-    description:
-      'Open-air synth beats and glowing stage visuals right beside the Nile breeze in Qena.',
-    posterUrl: '',
-  },
-  {
-    id: 'qena-03',
-    title: 'Starlight Acoustic Night',
-    artist: 'Southern Strings & Acoustic Ensemble',
-    venue: 'Qena Riverside Amphitheater',
-    isoDate: '2026-12-18',
-    isoTime: '19:00',
-    date: 'Fri, Dec 18, 2026',
-    time: '7:00 PM',
-    doors: '5:45 PM',
-    genre: 'Acoustic / Fusion',
-    priceEgp: 220,
-    tierPrices: { Silver: 220, Gold: 320, VIP: 480, Lounge: 750 },
-    totalSeats: 100,
-    seatsLeft: 100,
-    description:
-      'An intimate sunset-to-starlight acoustic fusion night blending modern melodies with live percussion.',
-    posterUrl: '',
-  },
-  {
-    id: 'qena-04',
-    title: 'Campus Sound Fest',
-    artist: 'South Valley Bands & Guest MCs',
-    venue: 'South Valley University Open Theater',
-    isoDate: '2026-12-25',
-    isoTime: '19:30',
-    date: 'Fri, Dec 25, 2026',
-    time: '7:30 PM',
-    doors: '6:00 PM',
-    genre: 'Alternative Rock',
-    priceEgp: 180,
-    tierPrices: { Silver: 180, Gold: 260, VIP: 400, Lounge: 620 },
-    totalSeats: 180,
-    seatsLeft: 180,
-    description:
-      'High-energy live rock, rap, and student-favorite headliners bringing festival energy to Qena.',
-    posterUrl: '',
-  },
-  {
-    id: 'qena-05',
-    title: 'Qena Hip-Hop Live',
-    artist: "Sa'id Hip-Hop Collective & Guests",
-    venue: 'Qena Youth Sports Arena',
-    isoDate: '2027-01-08',
-    isoTime: '20:00',
-    date: 'Fri, Jan 8, 2027',
-    time: '8:00 PM',
-    doors: '6:30 PM',
-    genre: 'Hip-Hop / Pop',
-    priceEgp: 200,
-    tierPrices: { Silver: 200, Gold: 290, VIP: 420, Lounge: 650 },
-    totalSeats: 130,
-    seatsLeft: 130,
-    description:
-      'Modern Egyptian hip-hop and urban pop taking over Qena with a full Gen Z stage production.',
-    posterUrl: '',
-  },
-  {
-    id: 'qena-06',
-    title: 'Winter Urban Groove',
-    artist: 'Nile Grooves & Live Percussion',
-    venue: 'Qena Open Festival Grounds',
-    isoDate: '2027-01-15',
-    isoTime: '19:30',
-    date: 'Fri, Jan 15, 2027',
-    time: '7:30 PM',
-    doors: '6:15 PM',
-    genre: 'Shaabi / Urban',
-    priceEgp: 170,
-    tierPrices: { Silver: 170, Gold: 250, VIP: 380, Lounge: 600 },
-    totalSeats: 140,
-    seatsLeft: 140,
-    description:
-      'A packed Friday night celebration in Qena with live percussion, urban grooves, and VIP lounge seating.',
-    posterUrl: '',
+      'Send the total from any Egyptian Mobile Wallet to 01041062000 and enter your SMS receipt reference or wallet number.',
   },
 ];

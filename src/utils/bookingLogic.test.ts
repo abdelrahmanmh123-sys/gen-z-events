@@ -1,10 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   ADMIN_SESSION_TTL_MS,
   buildAttendeesCsv,
   buildCalendarIcs,
   calculateOrderTotals,
+  canAccessAdminTab,
   computeAdminKpis,
   computeCountdown,
   emailToDocId,
@@ -17,16 +20,24 @@ import {
   generateBookingCode,
   getDefaultUpcomingIsoDate,
   getNextUpcomingConcert,
+  getStaffPermissions,
+  getTierColorHex,
   getTierUnitPrice,
+  hexToRgba,
   isAdminSessionActive,
   isEmailVerifiedAdminCandidate,
   isPendingEmailVerification,
+  isValidHexColor,
   isVerifiedFanAccount,
   MAX_POSTER_DATA_URL_LENGTH,
   normalizeEgyptianMobile,
+  normalizeHexColor,
+  normalizeOfflineMobile,
+  normalizeTierValue,
+  OFFLINE_USER_ID,
   parseBoundedIntInput,
+  parseOfflineTicketRows,
   partitionAdminSessions,
-  resolveStorefrontCollections,
   sanitizeId,
   sortByCreatedAtDesc,
   suggestTierPrices,
@@ -36,10 +47,90 @@ import {
   validateFullName,
   validateProfileUpdateInput,
   validateSignupInput,
+  validateTierColors,
   validateWaitlistInput,
 } from './bookingLogic.ts';
-import { DEFAULT_CONCERTS, DEFAULT_PROMOS } from '../data/defaults.ts';
-import type { AdminSession, Booking, Promo } from '../types.ts';
+import type { AdminSession, Booking, Concert, Promo } from '../types.ts';
+
+const TEST_PROMOS: Promo[] = [
+  { code: 'GENZ15', type: 'percent', value: 15, tiers: [], label: 'GENZ15 (15% Off)', active: true },
+  { code: 'VIP100', type: 'flat', value: 100, tiers: ['VIP', 'Lounge'], label: 'VIP100 (100 EGP Off)', active: true },
+];
+
+const TEST_CONCERTS: Concert[] = [
+  {
+    id: 'qena-01',
+    title: 'Upper Egypt Rising',
+    artist: 'Qena Collective',
+    venue: 'Qena Cultural Palace, Hall A',
+    isoDate: '2026-12-04',
+    isoTime: '20:00',
+    date: 'Fri, Dec 4, 2026',
+    time: '8:00 PM',
+    doors: '6:30 PM',
+    genre: 'Indie Pop / Rap',
+    priceEgp: 220,
+    tierPrices: { Silver: 220, Gold: 320, VIP: 450, Lounge: 700 },
+    totalSeats: 600,
+    seatsLeft: 420,
+    description: 'Live concert night in Qena.',
+    posterUrl: '',
+  },
+  {
+    id: 'qena-02',
+    title: 'Nile Echoes Live',
+    artist: 'South Nile Ensemble',
+    venue: 'Qena Corniche Open Air',
+    isoDate: '2026-12-11',
+    isoTime: '20:30',
+    date: 'Fri, Dec 11, 2026',
+    time: '8:30 PM',
+    doors: '7:00 PM',
+    genre: 'Acoustic / Fusion',
+    priceEgp: 260,
+    tierPrices: { Silver: 260, Gold: 380, VIP: 540, Lounge: 820 },
+    totalSeats: 500,
+    seatsLeft: 310,
+    description: 'Riverside acoustic fusion night.',
+    posterUrl: '',
+  },
+  {
+    id: 'qena-03',
+    title: 'Desert Bass Arena',
+    artist: 'Luxor & Qena DJs',
+    venue: 'Qena Sports Stadium',
+    isoDate: '2026-12-18',
+    isoTime: '19:00',
+    date: 'Fri, Dec 18, 2026',
+    time: '7:00 PM',
+    doors: '5:30 PM',
+    genre: 'Electronic / Afro',
+    priceEgp: 300,
+    tierPrices: { Silver: 300, Gold: 440, VIP: 630, Lounge: 960 },
+    totalSeats: 1200,
+    seatsLeft: 890,
+    description: 'High-energy stadium concert.',
+    posterUrl: '',
+  },
+  {
+    id: 'qena-06',
+    title: 'Campus Acoustic Unplugged',
+    artist: 'SVU Indie Band',
+    venue: 'South Valley Stage',
+    isoDate: '2026-12-25',
+    isoTime: '18:30',
+    date: 'Fri, Dec 25, 2026',
+    time: '6:30 PM',
+    doors: '5:00 PM',
+    genre: 'Acoustic / Fusion',
+    priceEgp: 150,
+    tierPrices: { Silver: 150, Gold: 220, VIP: 320, Lounge: 480 },
+    totalSeats: 400,
+    seatsLeft: 250,
+    description: 'Student unplugged session.',
+    posterUrl: '',
+  },
+];
 
 describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', () => {
   it('normalizes email to Firestore-safe doc ID consistently across edge characters', () => {
@@ -63,7 +154,7 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     const floored = suggestTierPrices(10);
     assert.equal(floored.Silver, 50);
 
-    assert.equal(getTierUnitPrice(DEFAULT_CONCERTS[0], 'VIP'), DEFAULT_CONCERTS[0].tierPrices.VIP);
+    assert.equal(getTierUnitPrice(TEST_CONCERTS[0], 'VIP'), TEST_CONCERTS[0].tierPrices.VIP);
     assert.equal(
       getTierUnitPrice({ priceEgp: 300, tierPrices: { Silver: 300, Gold: NaN, VIP: -5, Lounge: 900 } }, 'Gold'),
       440,
@@ -75,15 +166,15 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
   });
 
   it('evaluates percentage, flat, capped, inactive, and tier-restricted promo codes accurately', () => {
-    const pct = evaluatePromo('  genz15 ', 'Silver', 400, DEFAULT_PROMOS);
+    const pct = evaluatePromo('  genz15 ', 'Silver', 400, TEST_PROMOS);
     assert.equal(pct.valid, true);
     assert.equal(pct.discountEgp, 60);
 
-    const vipOnSilver = evaluatePromo('VIP100', 'Silver', 400, DEFAULT_PROMOS);
+    const vipOnSilver = evaluatePromo('VIP100', 'Silver', 400, TEST_PROMOS);
     assert.equal(vipOnSilver.valid, false);
     assert.equal(vipOnSilver.discountEgp, 0);
 
-    const vipOnLounge = evaluatePromo('VIP100', 'Lounge', 700, DEFAULT_PROMOS);
+    const vipOnLounge = evaluatePromo('VIP100', 'Lounge', 700, TEST_PROMOS);
     assert.equal(vipOnLounge.valid, true);
     assert.equal(vipOnLounge.discountEgp, 100);
 
@@ -99,19 +190,19 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
   });
 
   it('calculates order totals, clamps quantity to 1..6, and prevents negative totals', () => {
-    const res = calculateOrderTotals(DEFAULT_CONCERTS[0], 'VIP', 2, 'VIP100', DEFAULT_PROMOS);
+    const res = calculateOrderTotals(TEST_CONCERTS[0], 'VIP', 2, 'VIP100', TEST_PROMOS);
     assert.equal(res.unitPrice, 450);
     assert.equal(res.subtotalEgp, 900);
     assert.equal(res.discountEgp, 100);
     assert.equal(res.totalEgp, 800);
 
-    assert.equal(calculateOrderTotals(DEFAULT_CONCERTS[0], 'Silver', 99, '', DEFAULT_PROMOS).quantity, 6);
-    assert.equal(calculateOrderTotals(DEFAULT_CONCERTS[0], 'Silver', 0, '', DEFAULT_PROMOS).quantity, 1);
-    assert.equal(calculateOrderTotals(DEFAULT_CONCERTS[0], 'Silver', -4, '', DEFAULT_PROMOS).quantity, 1);
-    assert.equal(calculateOrderTotals(DEFAULT_CONCERTS[0], 'Silver', 2.9, '', DEFAULT_PROMOS).quantity, 2);
+    assert.equal(calculateOrderTotals(TEST_CONCERTS[0], 'Silver', 99, '', TEST_PROMOS).quantity, 6);
+    assert.equal(calculateOrderTotals(TEST_CONCERTS[0], 'Silver', 0, '', TEST_PROMOS).quantity, 1);
+    assert.equal(calculateOrderTotals(TEST_CONCERTS[0], 'Silver', -4, '', TEST_PROMOS).quantity, 1);
+    assert.equal(calculateOrderTotals(TEST_CONCERTS[0], 'Silver', 2.9, '', TEST_PROMOS).quantity, 2);
 
     const freePromo: Promo[] = [{ code: 'FREE', type: 'flat', value: 99999, tiers: [], label: 'Free', active: true }];
-    assert.equal(calculateOrderTotals(DEFAULT_CONCERTS[0], 'Silver', 1, 'FREE', freePromo).totalEgp, 0);
+    assert.equal(calculateOrderTotals(TEST_CONCERTS[0], 'Silver', 1, 'FREE', freePromo).totalEgp, 0);
   });
 
   it('generates valid, unambiguous GZ- booking codes with high uniqueness', () => {
@@ -169,8 +260,8 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
   });
 
   it('filters by search, genre, favorites and sorts without mutating the source array', () => {
-    const snapshot = DEFAULT_CONCERTS.map((c) => c.id);
-    const byPriceAsc = filterAndSortConcerts(DEFAULT_CONCERTS, {
+    const snapshot = TEST_CONCERTS.map((c) => c.id);
+    const byPriceAsc = filterAndSortConcerts(TEST_CONCERTS, {
       search: '',
       genre: 'All',
       sortBy: 'price-asc',
@@ -179,7 +270,7 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     });
     assert.equal(byPriceAsc[0].id, 'qena-06');
 
-    const byPriceDesc = filterAndSortConcerts(DEFAULT_CONCERTS, {
+    const byPriceDesc = filterAndSortConcerts(TEST_CONCERTS, {
       search: '',
       genre: 'All',
       sortBy: 'price-desc',
@@ -188,7 +279,7 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     });
     assert.ok(byPriceDesc[0].priceEgp >= byPriceDesc[byPriceDesc.length - 1].priceEgp);
 
-    const saved = filterAndSortConcerts(DEFAULT_CONCERTS, {
+    const saved = filterAndSortConcerts(TEST_CONCERTS, {
       search: 'nile',
       genre: 'All',
       sortBy: 'date-asc',
@@ -198,17 +289,17 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.equal(saved.length, 1);
     assert.equal(saved[0].id, 'qena-02');
 
-    const byGenre = filterAndSortConcerts(DEFAULT_CONCERTS, {
+    const byGenre = filterAndSortConcerts(TEST_CONCERTS, {
       search: '',
-      genre: DEFAULT_CONCERTS[0].genre,
+      genre: TEST_CONCERTS[0].genre,
       sortBy: 'date-asc',
       savedOnly: false,
       favorites: [],
     });
-    assert.ok(byGenre.every((c) => c.genre === DEFAULT_CONCERTS[0].genre));
+    assert.ok(byGenre.every((c) => c.genre === TEST_CONCERTS[0].genre));
 
     assert.deepEqual(
-      DEFAULT_CONCERTS.map((c) => c.id),
+      TEST_CONCERTS.map((c) => c.id),
       snapshot,
     );
   });
@@ -342,7 +433,7 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.ok(csv.includes('GZ-ABC123'));
     assert.ok(csv.includes('GZ-DEF456'));
 
-    const ics = buildCalendarIcs(paidBooking, DEFAULT_CONCERTS[0]);
+    const ics = buildCalendarIcs(paidBooking, TEST_CONCERTS[0]);
     assert.ok(ics.includes('BEGIN:VCALENDAR'));
     assert.ok(ics.includes('UID:GZ-ABC123@genzevents.eg'));
     assert.ok(ics.includes('DTSTART:20261204T200000'));
@@ -350,68 +441,110 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.ok(ics.includes('LOCATION:Qena Cultural Palace\\, Hall A\\, Qena\\, Egypt'));
 
     const nyeIcs = buildCalendarIcs(paidBooking, {
-      ...DEFAULT_CONCERTS[0],
+      ...TEST_CONCERTS[0],
       isoDate: '2026-12-31',
       isoTime: '22:30',
     });
     assert.ok(nyeIcs.includes('DTSTART:20261231T223000'));
     assert.ok(nyeIcs.includes('DTEND:20270101T013000'));
 
-    const kpis = computeAdminKpis(DEFAULT_CONCERTS, [paidBooking, pendingBooking]);
-    assert.equal(kpis.liveEvents, 6);
+    const kpis = computeAdminKpis(TEST_CONCERTS, [paidBooking, pendingBooking]);
+    assert.equal(kpis.liveEvents, 4);
     assert.equal(kpis.ticketsSold, 2);
     assert.equal(kpis.totalRevenueEgp, 800);
     assert.equal(kpis.pendingPayments, 1);
     assert.equal(kpis.checkedIn, 2);
   });
 
-  it('never falls back to defaults once Firestore is seeded or has live data', () => {
-    const loading = resolveStorefrontCollections({
-      dbConcerts: [],
-      dbPromos: [],
-      defaultConcerts: DEFAULT_CONCERTS,
-      defaultPromos: DEFAULT_PROMOS,
-      siteSeeded: false,
-      allLoaded: false,
-    });
-    assert.equal(loading.isLoadingInitial, true);
-    assert.equal(loading.concerts.length, 0);
+  it('enforces strict two-tier staff RBAC permissions for Gate Staff vs Super Admin', () => {
+    const superPerms = getStaffPermissions('Super Admin');
+    assert.equal(superPerms.isSuperAdmin, true);
+    assert.equal(superPerms.isGateStaff, false);
+    assert.equal(superPerms.defaultTab, 'dashboard');
+    assert.deepEqual(superPerms.allowedTabs, [
+      'dashboard',
+      'checkin',
+      'offline',
+      'schedule',
+      'manage',
+      'promos',
+      'team',
+    ]);
+    assert.equal(superPerms.canConfirmPayments, true);
+    assert.equal(superPerms.canGateCheckIn, true);
+    assert.equal(superPerms.canAccessOfflineTickets, true);
+    assert.equal(superPerms.canViewRecentApprovals, true);
+    assert.equal(superPerms.canViewRevenueAnalytics, true);
+    assert.equal(superPerms.canDeleteBookings, true);
+    assert.equal(superPerms.canManageConcerts, true);
+    assert.equal(superPerms.canManagePromos, true);
+    assert.equal(superPerms.canManageTeam, true);
 
-    const untouched = resolveStorefrontCollections({
-      dbConcerts: [],
-      dbPromos: [],
-      defaultConcerts: DEFAULT_CONCERTS,
-      defaultPromos: DEFAULT_PROMOS,
-      siteSeeded: false,
-      allLoaded: true,
-    });
-    assert.equal(untouched.isLiveInDb, false);
-    assert.equal(untouched.concerts.length, DEFAULT_CONCERTS.length);
-    assert.equal(untouched.promos.length, DEFAULT_PROMOS.length);
+    const gatePerms = getStaffPermissions('Gate Staff');
+    assert.equal(gatePerms.isSuperAdmin, false);
+    assert.equal(gatePerms.isGateStaff, true);
+    assert.equal(gatePerms.defaultTab, 'checkin');
+    assert.deepEqual(gatePerms.allowedTabs, ['checkin', 'offline', 'dashboard']);
+    assert.equal(gatePerms.canGateCheckIn, true);
+    assert.equal(gatePerms.canAccessOfflineTickets, true);
+    assert.equal(gatePerms.canViewRecentApprovals, true);
+    assert.equal(gatePerms.canConfirmPayments, false);
+    assert.equal(gatePerms.canViewRevenueAnalytics, false);
+    assert.equal(gatePerms.canDeleteBookings, false);
+    assert.equal(gatePerms.canManageConcerts, false);
+    assert.equal(gatePerms.canManagePromos, false);
+    assert.equal(gatePerms.canManageTeam, false);
 
-    const allDeleted = resolveStorefrontCollections({
-      dbConcerts: [],
-      dbPromos: [],
-      defaultConcerts: DEFAULT_CONCERTS,
-      defaultPromos: DEFAULT_PROMOS,
-      siteSeeded: true,
-      allLoaded: true,
-    });
-    assert.equal(allDeleted.isLiveInDb, true);
-    assert.equal(allDeleted.concerts.length, 0);
-    assert.equal(allDeleted.promos.length, 0);
+    assert.equal(canAccessAdminTab('Gate Staff', 'checkin'), true);
+    assert.equal(canAccessAdminTab('Gate Staff', 'offline'), true);
+    assert.equal(canAccessAdminTab('Gate Staff', 'dashboard'), true);
+    assert.equal(canAccessAdminTab('Gate Staff', 'schedule'), false);
+    assert.equal(canAccessAdminTab('Gate Staff', 'manage'), false);
+    assert.equal(canAccessAdminTab('Gate Staff', 'promos'), false);
+    assert.equal(canAccessAdminTab('Gate Staff', 'team'), false);
 
-    const promosDeleted = resolveStorefrontCollections({
-      dbConcerts: [DEFAULT_CONCERTS[0]],
-      dbPromos: [],
-      defaultConcerts: DEFAULT_CONCERTS,
-      defaultPromos: DEFAULT_PROMOS,
-      siteSeeded: false,
-      allLoaded: true,
-    });
-    assert.equal(promosDeleted.isLiveInDb, true);
-    assert.equal(promosDeleted.concerts.length, 1);
-    assert.equal(promosDeleted.promos.length, 0);
+    const noPerms = getStaffPermissions(null);
+    assert.deepEqual(noPerms.allowedTabs, []);
+    assert.equal(noPerms.canGateCheckIn, false);
+    assert.equal(noPerms.canConfirmPayments, false);
+    assert.equal(canAccessAdminTab(null, 'checkin'), false);
+  });
+
+  it('contains zero database seeding helpers or default concert/promo seed datasets in production source', () => {
+    const forbidden = [
+      'seedInitialDatabase',
+      'attachSiteSeededFlag',
+      'DEFAULT_CONCERTS',
+      'DEFAULT_PROMOS',
+      'resolveStorefrontCollections',
+      'siteSeeded',
+      'seedDefaultLineup',
+    ];
+    const walk = (dir: string): string[] => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const out: string[] = [];
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          out.push(...walk(full));
+        } else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith('.test.ts')) {
+          out.push(full);
+        }
+      }
+      return out;
+    };
+    const sourceFiles = walk(path.resolve('src'));
+    assert.ok(sourceFiles.length > 10, 'Expected production source files under src/');
+    for (const file of sourceFiles) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const token of forbidden) {
+        assert.equal(
+          content.includes(token),
+          false,
+          `Found removed seed token "${token}" in ${path.relative(process.cwd(), file)}`,
+        );
+      }
+    }
   });
 
   it('normalizes Egyptian mobile numbers across all prefix styles', () => {
@@ -517,9 +650,9 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.equal(getNextUpcomingConcert([]), null);
 
     const pastAndFuture = [
-      { ...DEFAULT_CONCERTS[0], id: 'past-show', isoDate: '2025-01-01', isoTime: '20:00' },
-      { ...DEFAULT_CONCERTS[2], id: 'later-show', isoDate: '2026-12-18', isoTime: '19:00' },
-      { ...DEFAULT_CONCERTS[1], id: 'soon-show', isoDate: '2026-12-11', isoTime: '20:30' },
+      { ...TEST_CONCERTS[0], id: 'past-show', isoDate: '2025-01-01', isoTime: '20:00' },
+      { ...TEST_CONCERTS[2], id: 'later-show', isoDate: '2026-12-18', isoTime: '19:00' },
+      { ...TEST_CONCERTS[1], id: 'soon-show', isoDate: '2026-12-11', isoTime: '20:30' },
     ];
     const nowMs = new Date('2026-11-21T12:00:00+02:00').getTime();
     assert.equal(getNextUpcomingConcert(pastAndFuture, nowMs)?.id, 'soon-show');
@@ -594,5 +727,162 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.equal(parseBoundedIntInput('12.5', 0, 100000).valid, false);
     assert.equal(parseBoundedIntInput('9', 10, 50000).valid, false);
     assert.equal(parseBoundedIntInput('50001', 10, 50000).valid, false);
+  });
+
+  it('validates, normalizes, and resolves custom per-concert ticket category colors accurately', () => {
+    assert.equal(isValidHexColor('#FBBF24'), true);
+    assert.equal(isValidHexColor('#fbbf24'), true);
+    assert.equal(isValidHexColor('#FFF'), false);
+    assert.equal(isValidHexColor('FBBF24'), false);
+    assert.equal(isValidHexColor('#ZZZZZZ'), false);
+
+    assert.equal(normalizeHexColor('fbbf24'), '#FBBF24');
+    assert.equal(normalizeHexColor('  #0fa  '), '#00FFAA');
+    assert.equal(normalizeHexColor('f0a'), '#FF00AA');
+    assert.equal(normalizeHexColor('#12345'), null);
+    assert.equal(normalizeHexColor('not-a-color'), null);
+
+    const validPalette = validateTierColors({
+      Silver: '#e2e8f0',
+      Gold: 'f59e0b',
+      VIP: '#f43',
+      Lounge: '#22d3ee',
+    });
+    assert.equal(validPalette.valid, true);
+    assert.deepEqual(validPalette.normalized, {
+      Silver: '#E2E8F0',
+      Gold: '#F59E0B',
+      VIP: '#FF4433',
+      Lounge: '#22D3EE',
+    });
+
+    assert.equal(validateTierColors({ Silver: '#112233', Gold: '#223344', VIP: '#GGGGGG', Lounge: '#445566' }).valid, false);
+    assert.equal(validateTierColors({ Silver: '#112233' }).valid, false);
+
+    const customConcert = {
+      ...TEST_CONCERTS[0],
+      tierColors: {
+        Silver: '#A855F7',
+        Gold: '#34D399',
+        VIP: '#FB7185',
+        Lounge: '#38BDF8',
+      },
+    };
+    assert.equal(getTierColorHex(customConcert, 'Silver'), '#A855F7');
+    assert.equal(getTierColorHex(customConcert, 'Lounge'), '#38BDF8');
+    assert.equal(getTierColorHex(TEST_CONCERTS[0], 'Gold'), '#FBBF24');
+    assert.equal(getTierColorHex(null, 'VIP'), '#F43F5E');
+
+    assert.equal(hexToRgba('#FF0080', 0.25), 'rgba(255, 0, 128, 0.25)');
+    assert.equal(hexToRgba('invalid', 0.5), 'rgba(148, 163, 184, 0.5)');
+  });
+
+  it('parses offline ticket spreadsheets across English and Arabic headers, deduplicates codes, and reports exact row errors', () => {
+    assert.equal(normalizeTierValue('gold'), 'Gold');
+    assert.equal(normalizeTierValue('V'), 'VIP');
+    assert.equal(normalizeTierValue('لاونج'), 'Lounge');
+    assert.equal(normalizeTierValue('فضي'), 'Silver');
+    assert.equal(normalizeTierValue('Balcony'), null);
+
+    assert.equal(normalizeOfflineMobile('1012345678'), '01012345678');
+    assert.equal(normalizeOfflineMobile('+20 112 345 6789'), '01123456789');
+
+    const rows: Record<string, unknown>[] = [
+      // Row 2: English headers, auto-calculated price, Excel stripped leading zero on mobile
+      {
+        'Customer Name': 'Omar Khaled',
+        Mobile: 1012345678,
+        Tier: 'Gold',
+        Quantity: 2,
+        Outlet: 'Qena Booth #1',
+      },
+      // Row 3: Blank row (ignored silently)
+      {
+        'Customer Name': '',
+        Mobile: '',
+        Tier: '',
+      },
+      // Row 4: Arabic headers, custom discounted total, Checked In = نعم, explicit custom code
+      {
+        الاسم: 'سارة علي',
+        الموبايل: '01123456789',
+        الفئة: 'في اي بي',
+        العدد: 3,
+        المبلغ: '1200 EGP',
+        المنفذ: 'شباك قنا',
+        الكود: 'OFF-10001',
+        الدخول: 'نعم',
+      },
+      // Row 5: Duplicate code from Row 4 + Pending status (should auto-generate fresh unique code & not count in paidTickets)
+      {
+        Name: 'Karim Adel',
+        Phone: '01234567890',
+        Category: 'Silver',
+        Qty: 2,
+        Code: 'OFF-10001',
+        Status: 'Pending',
+      },
+      // Row 6: Invalid amount string ('ABC' must NOT coerce to 0)
+      {
+        Name: 'Mona Saeed',
+        Phone: '01512345678',
+        Tier: 'Silver',
+        Qty: 1,
+        'Total EGP': 'ABC',
+      },
+      // Row 7: Unknown category
+      {
+        Name: 'Tarek Hany',
+        Phone: '01098765432',
+        Tier: 'Backstage',
+        Qty: 1,
+      },
+      // Row 8: Missing mobile
+      {
+        Name: 'Heba Nabil',
+        Phone: '123',
+        Tier: 'Silver',
+        Qty: 1,
+      },
+    ];
+
+    const result = parseOfflineTicketRows(rows, TEST_CONCERTS[0], 'Lead Organizer', ['GZ-EXIST1']);
+
+    assert.equal(result.validBookings.length, 3);
+    assert.equal(result.errors.length, 3);
+    assert.equal(result.totalTickets, 7);
+    assert.equal(result.paidTickets, 5);
+
+    // Verify Row 2
+    const b1 = result.validBookings[0];
+    assert.equal(b1.userId, OFFLINE_USER_ID);
+    assert.equal(b1.paymentMethod, 'Offline');
+    assert.equal(b1.customerMobile, '01012345678');
+    assert.equal(b1.tier, 'Gold');
+    assert.equal(b1.quantity, 2);
+    assert.equal(b1.totalEgp, getTierUnitPrice(TEST_CONCERTS[0], 'Gold') * 2);
+    assert.equal(b1.customerEmail, '');
+    assert.equal(b1.transferRef, 'Qena Booth #1');
+
+    // Verify Row 4 (Arabic)
+    const b2 = result.validBookings[1];
+    assert.equal(b2.bookingCode, 'OFF-10001');
+    assert.equal(b2.tier, 'VIP');
+    assert.equal(b2.totalEgp, 1200);
+    assert.equal(b2.discountEgp, getTierUnitPrice(TEST_CONCERTS[0], 'VIP') * 3 - 1200);
+    assert.equal(b2.checkedIn, true);
+    assert.equal(b2.paymentStatus, 'Paid');
+
+    // Verify Row 5 (deduplicated code + Pending)
+    const b3 = result.validBookings[2];
+    assert.notEqual(b3.bookingCode, 'OFF-10001');
+    assert.match(b3.bookingCode, /^GZ-[A-HJ-NP-Z2-9]{6}$/);
+    assert.equal(b3.paymentStatus, 'Pending');
+
+    // Verify exact Excel row numbers for errors (rows 6, 7, 8)
+    assert.deepEqual(
+      result.errors.map((e) => e.rowNumber),
+      [6, 7, 8],
+    );
   });
 });
