@@ -62,11 +62,14 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.match(userValidator, /isValidString\(data\.displayName,\s*2,\s*100\)/);
 
     const bookingValidator = extractFunctionBody('isValidBooking');
-    assert.match(bookingValidator, /isValidString\(data\.customerEmail,\s*3,\s*120\)/);
+    assert.match(bookingValidator, /isValidString\(data\.customerEmail,\s*0,\s*120\)/);
     assert.match(bookingValidator, /isValidString\(data\.customerMobile,\s*6,\s*30\)/);
   });
 
-  it('blocks self-approved Paid or checkedIn bookings on fan creation', () => {
+  it('blocks self-approved Paid, checkedIn, Offline, or high-qty bookings on fan creation', () => {
+    assert.match(rulesText, /incoming\(\)\.paymentMethod\s+in\s+\['InstaPay',\s*'Mobile Wallets'\]/);
+    assert.match(rulesText, /incoming\(\)\.quantity\s*<=\s*6/);
+    assert.match(rulesText, /incoming\(\)\.customerEmail\.size\(\)\s*>=\s*3/);
     assert.match(rulesText, /incoming\(\)\.paymentStatus\s*==\s*'Pending'/);
     assert.match(rulesText, /incoming\(\)\.checkedIn\s*==\s*false/);
     assert.match(rulesText, /incoming\(\)\.approvedBy\s*==\s*''/);
@@ -115,9 +118,24 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
 
   it('enforces path variable ID hardening, promo caps, and quantity bounds', () => {
     assert.match(rulesText, /function\s+isValidId\(id\)/);
-    assert.match(rulesText, /data\.quantity\s*>=\s*1\s*&&\s*data\.quantity\s*<=\s*6/);
+    assert.match(rulesText, /data\.quantity\s*>=\s*1\s*&&\s*data\.quantity\s*<=\s*500/);
+    assert.match(rulesText, /incoming\(\)\.quantity\s*<=\s*6/);
     assert.match(rulesText, /data\.value\s*>\s*0\s*&&\s*data\.value\s*<=\s*10000/);
     assert.match(rulesText, /data\.type\s*!=\s*'percent'\s*\|\|\s*data\.value\s*<=\s*90/);
+  });
+
+  it('strictly validates optional custom tierColors hex maps on concerts', () => {
+    const hexFn = extractFunctionBody('isValidHexColor');
+    assert.match(hexFn, /val\.size\(\)\s*==\s*7/);
+    assert.match(hexFn, /\^#\[0-9A-Fa-f\]\{6\}\$/);
+
+    const colorsFn = extractFunctionBody('isValidTierColors');
+    assert.match(colorsFn, /colors\.keys\(\)\.hasAll\(\['Silver',\s*'Gold',\s*'VIP',\s*'Lounge'\]\)/);
+    assert.match(colorsFn, /colors\.keys\(\)\.hasOnly\(\['Silver',\s*'Gold',\s*'VIP',\s*'Lounge'\]\)/);
+
+    const concertFn = extractFunctionBody('isValidConcert');
+    assert.match(concertFn, /'tierColors'/);
+    assert.match(concertFn, /!\('tierColors' in data\)\s*\|\|\s*isValidTierColors\(data\.tierColors\)/);
   });
 
   it('keeps backstage updates collection permanently removed under default-deny', () => {

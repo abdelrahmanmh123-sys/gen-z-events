@@ -65,6 +65,10 @@
           "type": "object",
           "description": "Map with numeric prices for Silver, Gold, VIP, and Lounge tiers."
         },
+        "tierColors": {
+          "type": "object",
+          "description": "Optional map of custom #RRGGBB hex accent colors for Silver, Gold, VIP, and Lounge tiers."
+        },
         "totalSeats": {
           "type": "integer"
         },
@@ -158,7 +162,8 @@
           "enum": ["Silver", "Gold", "VIP", "Lounge"]
         },
         "quantity": {
-          "type": "integer"
+          "type": "integer",
+          "description": "1-6 for online fan bookings; up to 500 for admin-imported offline group sales."
         },
         "unitPrice": {
           "type": "number"
@@ -175,7 +180,7 @@
         },
         "paymentMethod": {
           "type": "string",
-          "enum": ["InstaPay", "Mobile Wallets"]
+          "enum": ["InstaPay", "Mobile Wallets", "Offline"]
         },
         "transferRef": {
           "type": "string",
@@ -213,8 +218,9 @@
         },
         "customerEmail": {
           "type": "string",
-          "minLength": 3,
-          "maxLength": 120
+          "minLength": 0,
+          "maxLength": 120,
+          "description": "Required (>=3 chars) for online fan bookings; optional for admin offline walk-in imports."
         },
         "createdAt": {
           "type": "string",

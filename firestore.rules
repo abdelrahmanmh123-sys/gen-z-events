@@ -57,6 +57,20 @@ service cloud.firestore {
       return tier is string && tier in ['Silver', 'Gold', 'VIP', 'Lounge'];
     }
 
+    function isValidHexColor(val) {
+      return val is string && val.size() == 7 && val.matches('^#[0-9A-Fa-f]{6}$');
+    }
+
+    function isValidTierColors(colors) {
+      return colors is map
+        && colors.keys().hasAll(['Silver', 'Gold', 'VIP', 'Lounge'])
+        && colors.keys().hasOnly(['Silver', 'Gold', 'VIP', 'Lounge'])
+        && isValidHexColor(colors.Silver)
+        && isValidHexColor(colors.Gold)
+        && isValidHexColor(colors.VIP)
+        && isValidHexColor(colors.Lounge);
+    }
+
     // =========================================================================
     // VALIDATION BLUEPRINTS (Anti-Update-Gap)
     // =========================================================================
@@ -70,7 +84,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'id', 'title', 'artist', 'venue', 'isoDate', 'isoTime',
           'date', 'time', 'doors', 'genre', 'priceEgp', 'tierPrices',
-          'totalSeats', 'seatsLeft', 'description', 'posterUrl',
+          'tierColors', 'totalSeats', 'seatsLeft', 'description', 'posterUrl',
           'createdAt', 'updatedAt'
         ])
         && data.id == docId
@@ -93,6 +107,7 @@ service cloud.firestore {
         && (data.tierPrices.Gold is int || data.tierPrices.Gold is float) && data.tierPrices.Gold >= 0 && data.tierPrices.Gold <= 100000
         && (data.tierPrices.VIP is int || data.tierPrices.VIP is float) && data.tierPrices.VIP >= 0 && data.tierPrices.VIP <= 100000
         && (data.tierPrices.Lounge is int || data.tierPrices.Lounge is float) && data.tierPrices.Lounge >= 0 && data.tierPrices.Lounge <= 100000
+        && (!('tierColors' in data) || isValidTierColors(data.tierColors))
         && data.totalSeats is int && data.totalSeats >= 1 && data.totalSeats <= 50000
         && data.seatsLeft is int && data.seatsLeft >= 0 && data.seatsLeft <= data.totalSeats
         && isValidString(data.description, 4, 800)
@@ -128,12 +143,12 @@ service cloud.firestore {
         && isValidString(data.concertTime, 4, 20)
         && isValidString(data.concertVenue, 2, 140)
         && isValidTier(data.tier)
-        && data.quantity is int && data.quantity >= 1 && data.quantity <= 6
+        && data.quantity is int && data.quantity >= 1 && data.quantity <= 500
         && (data.unitPrice is int || data.unitPrice is float) && data.unitPrice >= 0 && data.unitPrice <= 100000
         && isValidString(data.promoCode, 0, 32)
-        && (data.discountEgp is int || data.discountEgp is float) && data.discountEgp >= 0 && data.discountEgp <= 600000
-        && (data.totalEgp is int || data.totalEgp is float) && data.totalEgp >= 0 && data.totalEgp <= 600000
-        && data.paymentMethod is string && data.paymentMethod in ['InstaPay', 'Mobile Wallets']
+        && (data.discountEgp is int || data.discountEgp is float) && data.discountEgp >= 0 && data.discountEgp <= 50000000
+        && (data.totalEgp is int || data.totalEgp is float) && data.totalEgp >= 0 && data.totalEgp <= 50000000
+        && data.paymentMethod is string && data.paymentMethod in ['InstaPay', 'Mobile Wallets', 'Offline']
         && isValidString(data.transferRef, 3, 80)
         && data.paymentStatus is string && data.paymentStatus in ['Pending', 'Paid']
         && data.checkedIn is bool
@@ -142,7 +157,7 @@ service cloud.firestore {
         && isValidString(data.approvalMethod, 0, 40)
         && isValidString(data.customerName, 2, 100)
         && isValidString(data.customerMobile, 6, 30)
-        && isValidString(data.customerEmail, 3, 120)
+        && isValidString(data.customerEmail, 0, 120)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -286,7 +301,7 @@ service cloud.firestore {
         && isAdmin();
     }
 
-    // 3. Bookings: PII-isolated ticket orders & gate check-ins (verified accounts only)
+    // 3. Bookings: PII-isolated ticket orders, offline sales & gate check-ins
     match /bookings/{bookingId} {
       allow get: if isVerified()
         && isValidId(bookingId)
@@ -302,6 +317,9 @@ service cloud.firestore {
         && (
           isAdmin() || (
             incoming().userId == request.auth.uid
+            && incoming().paymentMethod in ['InstaPay', 'Mobile Wallets']
+            && incoming().quantity <= 6
+            && incoming().customerEmail.size() >= 3
             && incoming().paymentStatus == 'Pending'
             && incoming().checkedIn == false
             && incoming().checkedInAt == ''
