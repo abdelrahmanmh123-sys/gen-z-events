@@ -55,3 +55,26 @@ describe('Cross-Browser Compatibility & Accessibility Guards', () => {
     assert.match(vercel, /"value":\s*"public, max-age=0, must-revalidate"/);
   });
 });
+
+describe('Project Base & Git Commit Readiness Guards', () => {
+  it('pins firebase-applet-config.json strictly to base project gen-z-events and its Firestore database', () => {
+    const cfg = JSON.parse(fs.readFileSync('firebase-applet-config.json', 'utf8')) as Record<string, string>;
+    assert.equal(cfg.projectId, 'gen-z-events');
+    assert.equal(cfg.authDomain, 'gen-z-events.firebaseapp.com');
+    assert.equal(cfg.firestoreDatabaseId, 'ai-studio-ebd015a5-12b5-456c-b8c3-447ca302527f');
+    assert.ok(typeof cfg.apiKey === 'string' && cfg.apiKey.startsWith('AIza'), 'Valid Firebase web apiKey required');
+    assert.ok(typeof cfg.appId === 'string' && cfg.appId.length > 10, 'Valid Firebase appId required');
+  });
+
+  it('keeps .gitignore clean of secrets, build outputs, and temporary verification artifacts', () => {
+    const gitignore = fs.readFileSync('.gitignore', 'utf8');
+    assert.match(gitignore, /^node_modules\/$/m);
+    assert.match(gitignore, /^dist\/$/m);
+    assert.match(gitignore, /^\.env\*$/m);
+    assert.match(gitignore, /^!\.env\.example$/m);
+    assert.match(gitignore, /^\.playwright-cli\/$/m);
+    assert.match(gitignore, /^DRAFT_firestore\.rules$/m);
+    assert.equal(fs.existsSync('DRAFT_firestore.rules'), false, 'No scratch DRAFT_firestore.rules file left in repo');
+  });
+});
+
