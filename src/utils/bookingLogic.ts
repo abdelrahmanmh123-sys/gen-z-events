@@ -1022,18 +1022,55 @@ function pickColumnValue(row: Record<string, unknown>, aliases: string[]): strin
 }
 
 export function normalizeTierValue(raw: string): TierId | null {
-  const clean = raw.trim().toLowerCase();
+  const clean = raw.trim().toLowerCase().replace(/\s+/g, ' ');
   if (!clean) return null;
-  if (clean === 'silver' || clean === 's' || clean === 'regular' || clean === 'standard' || clean === 'فضي' || clean === 'سيلفر') {
+  if (
+    clean === 'silver' ||
+    clean === 's' ||
+    clean === 'regular' ||
+    clean === 'standard' ||
+    clean === 'فضي' ||
+    clean === 'سيلفر' ||
+    clean.includes('silver') ||
+    clean.includes('سيلفر')
+  ) {
     return 'Silver';
   }
-  if (clean === 'gold' || clean === 'g' || clean === 'ذهبي' || clean === 'جولد') {
+  if (
+    clean === 'gold' ||
+    clean === 'g' ||
+    clean === 'ذهبي' ||
+    clean === 'جولد' ||
+    clean.includes('gold') ||
+    clean.includes('جولد')
+  ) {
     return 'Gold';
   }
-  if (clean === 'vip' || clean === 'v' || clean === 'في اي بي' || clean === 'كبار الشخصيات') {
+  if (
+    clean === 'vip' ||
+    clean === 'v' ||
+    clean === 'fan pit' ||
+    clean === 'fanpit' ||
+    clean === 'fan-pit' ||
+    clean === 'فان بيت' ||
+    clean === 'في اي بي' ||
+    clean === 'في آي بي' ||
+    clean === 'كبار الشخصيات' ||
+    clean.includes('fan pit') ||
+    clean.includes('fanpit') ||
+    clean.includes('فان بيت') ||
+    clean.includes('vip')
+  ) {
     return 'VIP';
   }
-  if (clean === 'lounge' || clean === 'l' || clean === 'table' || clean === 'لاونج') {
+  if (
+    clean === 'lounge' ||
+    clean === 'l' ||
+    clean === 'table' ||
+    clean === 'لاونج' ||
+    clean.includes('lounge') ||
+    clean.includes('لاونج')
+  ) {
     return 'Lounge';
   }
   return null;
@@ -1115,6 +1152,9 @@ export function parseOfflineTicketRows(
       'Mobile Number',
       'Tel',
       'Whatsapp',
+      'رقم الواتساب للتواصل',
+      'رقم الواتساب',
+      'واتساب',
       'رقم الموبايل',
       'الموبايل',
       'الهاتف',
@@ -1128,6 +1168,7 @@ export function parseOfflineTicketRows(
       'Ticket Tier',
       'Ticket Category',
       'Class',
+      'فئة التذكرة',
       'الفئة',
     ]);
     const rawQty = pickColumnValue(row, [
@@ -1163,6 +1204,7 @@ export function parseOfflineTicketRows(
       'Transfer Ref',
       'Reference',
       'Notes',
+      'مركز البيع',
       'المنفذ',
       'البائع',
     ]);

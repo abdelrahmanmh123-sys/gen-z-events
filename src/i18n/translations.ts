@@ -563,9 +563,9 @@ export const translations = {
     cancelDeleteAria: 'Cancel delete',
 
     // Admin Offline Tickets
-    offlineTitle: 'Offline Ticket Sales & Excel Import',
+    offlineTitle: 'Offline Tickets · Google Form & Excel Sync',
     offlineSubtitle:
-      'Import box-office, POS, or booth Excel sheets (.xlsx / .xls / .csv) into live attendance & revenue reports.',
+      'Sync live submissions from your bound Google Form, upload booth Excel sheets (.xlsx / .csv), or log walk-in sales into attendance & revenue reports.',
     importExcelFile: 'Import Excel File',
     downloadTemplate: 'Download Template',
     hideManualEntry: 'Hide Manual Entry',
@@ -1024,9 +1024,9 @@ export const translations = {
     cancelDeleteAria: 'إلغاء الحذف',
 
     // Admin Offline Tickets
-    offlineTitle: 'مبيعات التذاكر الأوفلاين واستيراد إكسل',
+    offlineTitle: 'التذاكر الأوفلاين · مزامنة Google Form وإكسل',
     offlineSubtitle:
-      'استورد ملفات إكسل الخاصة بالمنافذ أو شباك التذاكر (.xlsx / .xls / .csv) مباشرةً إلى تقارير الحضور والإيرادات.',
+      'زامن ردود فورم التذاكر الأوفلاين (Google Form) مباشرةً أو استورد ملفات إكسل الخاصة بالمنافذ لتحديث الحضور والإيرادات لحظياً.',
     importExcelFile: 'استيراد ملف إكسل',
     downloadTemplate: 'تحميل نموذج إكسل',
     hideManualEntry: 'إخفاء الإدخال اليدوي',

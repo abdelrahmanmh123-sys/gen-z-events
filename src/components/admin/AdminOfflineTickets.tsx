@@ -43,11 +43,13 @@ import {
   getTierCopy,
   localizeKnownMessage,
 } from '../../i18n/translations';
+import { GoogleFormSyncPanel } from './GoogleFormSyncPanel';
 
 interface AdminOfflineTicketsProps {
   concerts: Concert[];
   bookings: Booking[];
   adminName: string;
+  adminEmail: string;
   canDeleteBookings: boolean;
   onNotify: (msg: string) => void;
 }
@@ -56,6 +58,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
   concerts,
   bookings,
   adminName,
+  adminEmail,
   canDeleteBookings,
   onNotify,
 }) => {
@@ -462,6 +465,18 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
           <span>{t.scheduleConcertFirstWarn}</span>
         </div>
       )}
+
+      {/* Bound Google Form Live Offline Ticket Sync */}
+      <GoogleFormSyncPanel
+        concerts={concerts}
+        activeConcert={activeConcert}
+        selectedConcertId={selectedConcertId}
+        onSelectConcertId={setSelectedConcertId}
+        existingCodes={existingCodes}
+        adminName={adminName}
+        adminEmail={adminEmail}
+        onNotify={onNotify}
+      />
 
       {/* Excel Import Preview & Confirmation Panel */}
       {rawImportFile && parsedImport && importConcert && (

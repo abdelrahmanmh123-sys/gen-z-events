@@ -18,6 +18,9 @@ import {
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
+const FIRESTORE_DATABASE_ID =
+  (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId ||
+  'ai-studio-ebd015a5-12b5-456c-b8c3-447ca302527f';
 
 function initDb(): Firestore {
   try {
@@ -28,10 +31,10 @@ function initDb(): Firestore {
         // Prevent ReadableStream stalls in Safari 12-14, older Android WebViews, and mobile carrier proxies
         useFetchStreams: false,
       } as Parameters<typeof initializeFirestore>[1],
-      firebaseConfig.firestoreDatabaseId,
+      FIRESTORE_DATABASE_ID,
     );
   } catch {
-    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    return getFirestore(app, FIRESTORE_DATABASE_ID);
   }
 }
 

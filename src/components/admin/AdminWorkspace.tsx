@@ -277,6 +277,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
               concerts={concerts}
               bookings={bookings}
               adminName={adminName}
+              adminEmail={adminEmail}
               canDeleteBookings={permissions.canDeleteBookings}
               onNotify={onNotify}
             />
