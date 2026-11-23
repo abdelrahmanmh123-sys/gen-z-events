@@ -69,8 +69,8 @@ export const TICKET_TIERS: TierMeta[] = [
   },
 ];
 
-export const PAYMENT_PHONE_NUMBER = '01041062000';
-export const PAYMENT_WHATSAPP_NUMBER = '201041062000';
+export const PAYMENT_PHONE_NUMBER = '+201040206700';
+export const PAYMENT_WHATSAPP_NUMBER = '201040206700';
 
 export const PAYMENT_METHODS: PaymentMethodMeta[] = [
   {
@@ -78,15 +78,13 @@ export const PAYMENT_METHODS: PaymentMethodMeta[] = [
     label: 'InstaPay',
     sub: 'Instant bank or IPA transfer',
     destination: PAYMENT_PHONE_NUMBER,
-    instructions:
-      'Transfer the total via InstaPay to 01041062000 and paste your transfer reference or sender mobile below.',
+    instructions: `Transfer the total via InstaPay to ${PAYMENT_PHONE_NUMBER} and paste your transfer reference or sender mobile below.`,
   },
   {
     id: 'Mobile Wallets',
     label: 'Mobile Wallets',
     sub: 'Vodafone, Orange, Etisalat, WE Pay',
     destination: PAYMENT_PHONE_NUMBER,
-    instructions:
-      'Send the total from any Egyptian Mobile Wallet to 01041062000 and enter your SMS receipt reference or wallet number.',
+    instructions: `Send the total from any Egyptian Mobile Wallet to ${PAYMENT_PHONE_NUMBER} and enter your SMS receipt reference or wallet number.`,
   },
 ];

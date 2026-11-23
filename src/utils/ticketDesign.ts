@@ -18,6 +18,15 @@ export interface TicketDesignSpec {
 
 export const TICKET_CANVAS_WIDTH = 1500;
 export const TICKET_CANVAS_HEIGHT = 500;
+export const QR_ORIGINAL_EXPORT_SIZE = 1024;
+export const QR_ORIGINAL_EXPORT_MARGIN = 4;
+
+export function buildQrDownloadFilename(bookingCode: string): string {
+  const safeCode = String(bookingCode || 'ticket')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '');
+  return `${safeCode || 'ticket'}-genz-qr.png`;
+}
 
 /**
  * Exact normalized geometry (0..1) of the right-hand stub area on the 4344x1448 (3:1)
@@ -159,7 +168,7 @@ export interface TicketWhatsAppOptions {
 }
 
 /**
- * Builds a direct WhatsApp click-to-chat URL to Gen Z Events (+201041062000)
+ * Builds a direct WhatsApp click-to-chat URL to Gen Z Events (+201040206700)
  * pre-filled with booking and payment details so fans can send their payment receipt.
  */
 export function buildTicketReceiptWhatsAppUrl(

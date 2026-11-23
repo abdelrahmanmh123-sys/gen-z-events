@@ -12,6 +12,7 @@ import {
   localizeKnownMessage,
   PAYMENT_COPY,
   resolveInitialLanguage,
+  TICKET_ENTRY_TERMS,
   translations,
 } from './translations';
 import {
@@ -35,27 +36,49 @@ test('translations.en and translations.ar have identical non-empty keys', () => 
   }
 });
 
-test('all InstaPay and Mobile Wallets numbers use 01041062000 and never legacy numbers', () => {
-  assert.equal(PAYMENT_PHONE_NUMBER, '01041062000');
+test('all InstaPay and Mobile Wallets numbers use +201040206700 and never legacy numbers', () => {
+  assert.equal(PAYMENT_PHONE_NUMBER, '+201040206700');
 
   for (const method of PAYMENT_METHODS) {
-    assert.equal(method.destination, '01041062000');
-    assert.ok(method.instructions.includes('01041062000'));
+    assert.equal(method.destination, '+201040206700');
+    assert.ok(method.instructions.includes('+201040206700'));
+    assert.ok(!method.instructions.includes('01041062000'));
     assert.ok(!method.instructions.includes('01554118042'));
     assert.ok(!method.instructions.includes('01007979070'));
   }
 
   for (const lang of ['en', 'ar'] as const) {
     for (const id of ['InstaPay', 'Mobile Wallets'] as const) {
-      assert.equal(PAYMENT_COPY[lang][id].destination, '01041062000');
-      assert.ok(PAYMENT_COPY[lang][id].instructions.includes('01041062000'));
+      assert.equal(PAYMENT_COPY[lang][id].destination, '+201040206700');
+      assert.ok(PAYMENT_COPY[lang][id].instructions.includes('+201040206700'));
+      assert.ok(!PAYMENT_COPY[lang][id].instructions.includes('01041062000'));
       assert.ok(!PAYMENT_COPY[lang][id].instructions.includes('01554118042'));
       assert.ok(!PAYMENT_COPY[lang][id].instructions.includes('01007979070'));
     }
-    assert.ok(translations[lang].footerSubtitle.includes('01041062000'));
+    assert.ok(translations[lang].footerSubtitle.includes('+201040206700'));
+    assert.ok(!translations[lang].footerSubtitle.includes('01041062000'));
     assert.ok(!translations[lang].footerSubtitle.includes('01554118042'));
     assert.ok(!translations[lang].footerSubtitle.includes('01007979070'));
+    assert.ok(translations[lang].whatsappReceiptAria.includes('+201040206700'));
+    assert.ok(!translations[lang].whatsappReceiptAria.includes('01041062000'));
   }
+});
+
+test('TICKET_ENTRY_TERMS provides all 6 entry rules cleanly in both EN and AR', () => {
+  assert.equal(TICKET_ENTRY_TERMS.en.items.length, 6);
+  assert.equal(TICKET_ENTRY_TERMS.ar.items.length, 6);
+  assert.equal(TICKET_ENTRY_TERMS.ar.title, 'شروط وتعليمات الدخول');
+  assert.equal(TICKET_ENTRY_TERMS.en.title, 'Terms & Conditions');
+  for (const lang of ['en', 'ar'] as const) {
+    for (const item of TICKET_ENTRY_TERMS[lang].items) {
+      assert.ok(item.number.trim().length > 0);
+      assert.ok(item.text.trim().length > 15);
+    }
+  }
+  assert.ok(TICKET_ENTRY_TERMS.ar.items[0].text.includes('يُمنع الخروج والعودة'));
+  assert.ok(TICKET_ENTRY_TERMS.ar.items[3].text.includes('المأكولات والمشروبات'));
+  assert.ok(TICKET_ENTRY_TERMS.en.items[0].text.toLowerCase().includes('re-entry'));
+  assert.ok(TICKET_ENTRY_TERMS.en.items[3].text.toLowerCase().includes('fireworks'));
 });
 
 test('language resolution, directionality, currency, and label helpers work cleanly', () => {
@@ -105,14 +128,14 @@ test('language resolution, directionality, currency, and label helpers work clea
 });
 
 test('Arabic-Indic and Persian digits normalize cleanly in mobile & numeric parsers', () => {
-  assert.equal(toAsciiDigits('٠١٠٤١٠٦٢٠٠٠'), '01041062000');
+  assert.equal(toAsciiDigits('٠١٠٤٠٢٠٦٧٠٠'), '01040206700');
   assert.equal(toAsciiDigits('۰۱۲۳۴۵۶۷۸۹'), '0123456789');
-  assert.equal(normalizeEgyptianMobile('٠١٠٤١٠٦٢٠٠٠'), '01041062000');
-  assert.equal(normalizeEgyptianMobile('+٢٠١٠٤١٠٦٢٠٠٠'), '01041062000');
+  assert.equal(normalizeEgyptianMobile('٠١٠٤٠٢٠٦٧٠٠'), '01040206700');
+  assert.equal(normalizeEgyptianMobile('+٢٠١٠٤٠٢٠٦٧٠٠'), '01040206700');
 
-  const validAr = validateEgyptianMobile('٠١٠٤١٠٦٢٠٠٠');
+  const validAr = validateEgyptianMobile('٠١٠٤٠٢٠٦٧٠٠');
   assert.equal(validAr.valid, true);
-  assert.equal(validAr.normalized, '01041062000');
+  assert.equal(validAr.normalized, '01040206700');
 
   const invalid = validateEgyptianMobile('12345');
   assert.equal(invalid.valid, false);

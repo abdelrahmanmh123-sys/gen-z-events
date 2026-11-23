@@ -4,9 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PAYMENT_WHATSAPP_NUMBER } from '../data/defaults';
 import {
+  buildQrDownloadFilename,
   buildTicketReceiptWhatsAppUrl,
   computeTicketStubRects,
   getTicketDesignForTier,
+  QR_ORIGINAL_EXPORT_MARGIN,
+  QR_ORIGINAL_EXPORT_SIZE,
   TICKET_CANVAS_HEIGHT,
   TICKET_CANVAS_WIDTH,
   TICKET_DESIGN_CATALOG,
@@ -67,8 +70,16 @@ test('computeTicketStubRects cleanly covers ZONE/ROW/SEAT/barcode without touchi
   assert.ok(rects.codeText.baselineY < rects.patch.y + rects.patch.h);
 });
 
-test('buildTicketReceiptWhatsAppUrl directs straight to +201041062000 with receipt details in EN and AR', () => {
-  assert.equal(PAYMENT_WHATSAPP_NUMBER, '201041062000');
+test('original-size QR export settings and download filename builder are crisp and safe', () => {
+  assert.ok(QR_ORIGINAL_EXPORT_SIZE >= 1024, 'Original QR export should be at least 1024px');
+  assert.ok(QR_ORIGINAL_EXPORT_MARGIN >= 4, 'Original QR export should preserve 4-module quiet zone');
+  assert.equal(buildQrDownloadFilename('GZ-D7MM9E'), 'GZ-D7MM9E-genz-qr.png');
+  assert.equal(buildQrDownloadFilename('  GZ-99/..\\bad  '), 'GZ-99bad-genz-qr.png');
+  assert.equal(buildQrDownloadFilename(''), 'ticket-genz-qr.png');
+});
+
+test('buildTicketReceiptWhatsAppUrl directs straight to +201040206700 with receipt details in EN and AR', () => {
+  assert.equal(PAYMENT_WHATSAPP_NUMBER, '201040206700');
 
   const pendingBooking = {
     bookingCode: 'GZ-RCP888',
@@ -90,7 +101,7 @@ test('buildTicketReceiptWhatsAppUrl directs straight to +201041062000 with recei
     totalFormatted: '1,200 EGP',
     statusText: 'Pending Verification',
   });
-  assert.ok(enUrl.startsWith('https://wa.me/201041062000?text='));
+  assert.ok(enUrl.startsWith('https://wa.me/201040206700?text='));
   const enBody = decodeURIComponent(enUrl.split('?text=')[1]);
   assert.ok(enBody.includes('GZ-RCP888'));
   assert.ok(enBody.includes('IPN-998877'));
@@ -104,7 +115,7 @@ test('buildTicketReceiptWhatsAppUrl directs straight to +201041062000 with recei
     totalFormatted: '1,200 ج.م',
     statusText: 'بانتظار مراجعة التحويل',
   });
-  assert.ok(arUrl.startsWith('https://wa.me/201041062000?text='));
+  assert.ok(arUrl.startsWith('https://wa.me/201040206700?text='));
   const arBody = decodeURIComponent(arUrl.split('?text=')[1]);
   assert.ok(arBody.includes('GZ-RCP888'));
   assert.ok(arBody.includes('IPN-998877'));
@@ -120,7 +131,7 @@ test('buildTicketReceiptWhatsAppUrl directs straight to +201041062000 with recei
       statusText: 'Paid · QR Ready',
     },
   );
-  assert.ok(paidUrl.startsWith('https://wa.me/201041062000?text='));
+  assert.ok(paidUrl.startsWith('https://wa.me/201040206700?text='));
   const paidBody = decodeURIComponent(paidUrl.split('?text=')[1]);
   assert.ok(!paidBody.includes('Attached is my payment receipt'));
 });

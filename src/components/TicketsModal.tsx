@@ -5,6 +5,7 @@ import {
   Download,
   Maximize2,
   MessageCircle,
+  QrCode,
   Ticket,
   Trash2,
   X,
@@ -14,15 +15,22 @@ import { cancelPendingBooking } from '../services/firestoreService';
 import { formatFriendlyFirebaseError } from '../firebase';
 import type { Booking, Concert } from '../types';
 import { getTierColorHex, isPendingEmailVerification, isVerifiedFanAccount } from '../utils/bookingLogic';
-import { copyTextToClipboard, generateQrDataUrl, renderTicketPassPng } from '../utils/passExport';
+import {
+  copyTextToClipboard,
+  generateOriginalQrDataUrl,
+  generateQrDataUrl,
+  renderTicketPassPng,
+  triggerDataUrlDownload,
+} from '../utils/passExport';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
   formatCurrencyEgp,
   getPaymentMethodLabel,
   getTierCopy,
   localizeKnownMessage,
+  TICKET_ENTRY_TERMS,
 } from '../i18n/translations';
-import { buildTicketReceiptWhatsAppUrl } from '../utils/ticketDesign';
+import { buildQrDownloadFilename, buildTicketReceiptWhatsAppUrl } from '../utils/ticketDesign';
 import { TicketVisualCard } from './TicketVisualCard';
 
 interface TicketsModalProps {
@@ -49,6 +57,7 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
   const [previewPng, setPreviewPng] = useState<{ code: string; dataUrl: string } | null>(null);
   const [zoomQrBooking, setZoomQrBooking] = useState<Booking | null>(null);
   const [generatingPngCode, setGeneratingPngCode] = useState<string | null>(null);
+  const [downloadingQrCode, setDownloadingQrCode] = useState<string | null>(null);
   const [confirmCancelCode, setConfirmCancelCode] = useState<string | null>(null);
   const [busyCode, setBusyCode] = useState<string | null>(null);
 
@@ -57,6 +66,7 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
       setPreviewPng(null);
       setZoomQrBooking(null);
       setGeneratingPngCode(null);
+      setDownloadingQrCode(null);
       setConfirmCancelCode(null);
       setQrMap({});
       return;
@@ -80,15 +90,20 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
     if (!isOpen) return;
     let active = true;
     const loadQrs = async () => {
-      const next: Record<string, string> = {};
-      for (const b of bookings) {
-        if (b.paymentStatus === 'Paid') {
+      const paidBookings = bookings.filter((b) => b.paymentStatus === 'Paid');
+      const entries = await Promise.all(
+        paidBookings.map(async (b) => {
           try {
-            next[b.bookingCode] = await generateQrDataUrl(b.bookingCode);
+            const url = await generateQrDataUrl(b.bookingCode);
+            return [b.bookingCode, url] as const;
           } catch {
-            // ignore QR generation failure
+            return null;
           }
-        }
+        }),
+      );
+      const next: Record<string, string> = {};
+      for (const entry of entries) {
+        if (entry) next[entry[0]] = entry[1];
       }
       if (active) setQrMap(next);
     };
@@ -99,6 +114,8 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
   }, [isOpen, bookings]);
 
   if (!isOpen) return null;
+
+  const entryTerms = TICKET_ENTRY_TERMS[lang];
 
   const handleOpenPngPreview = async (booking: Booking) => {
     setGeneratingPngCode(booking.bookingCode);
@@ -111,6 +128,20 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
       onNotify(t.pngRenderFailed);
     } finally {
       setGeneratingPngCode(null);
+    }
+  };
+
+  const handleDownloadOriginalQr = async (booking: Booking) => {
+    if (booking.paymentStatus !== 'Paid') return;
+    setDownloadingQrCode(booking.bookingCode);
+    try {
+      const qrDataUrl = await generateOriginalQrDataUrl(booking.bookingCode);
+      triggerDataUrlDownload(buildQrDownloadFilename(booking.bookingCode), qrDataUrl);
+      onNotify(`${t.qrDownloadedPrefix} ${booking.bookingCode}`);
+    } catch {
+      onNotify(t.qrDownloadFailed);
+    } finally {
+      setDownloadingQrCode(null);
     }
   };
 
@@ -334,11 +365,23 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
                       type="button"
                       disabled={generatingPngCode === b.bookingCode}
                       onClick={() => void handleOpenPngPreview(b)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-60 text-xs font-medium text-white"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-60 text-xs font-medium text-white transition-colors"
                     >
                       <Download className="w-3.5 h-3.5" />
                       {generatingPngCode === b.bookingCode ? t.ePassGenerating : t.ePassPng}
                     </button>
+                    {isPaid && (
+                      <button
+                        type="button"
+                        disabled={downloadingQrCode === b.bookingCode}
+                        onClick={() => void handleDownloadOriginalQr(b)}
+                        aria-label={`${t.downloadQrAria} (${b.bookingCode})`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-60 text-xs font-medium text-white transition-colors"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        {downloadingQrCode === b.bookingCode ? t.qrDownloading : t.downloadQr}
+                      </button>
+                    )}
                     <div className="inline-flex flex-wrap items-center gap-2">
                       <a
                         href={buildWhatsAppHref(b)}
@@ -401,6 +444,45 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
               );
             })
           )}
+
+          {/* Entry Terms & Conditions below booked tickets */}
+          {isVerifiedFanAccount(user) && bookings.length > 0 && (
+            <section
+              aria-label={entryTerms.title}
+              className="rounded-xl border border-amber-400/30 bg-[#08090C] p-4 sm:p-5 space-y-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-amber-400/20">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    aria-hidden="true"
+                    className="w-1 h-5 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 shrink-0"
+                  />
+                  <h3 className="font-display font-bold text-base sm:text-lg text-white">
+                    {entryTerms.title}
+                  </h3>
+                </div>
+                <span className="text-[10px] font-mono-num font-semibold uppercase tracking-[0.18em] text-amber-300/85">
+                  {entryTerms.subtitle}
+                </span>
+              </div>
+
+              <ol className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3.5">
+                {entryTerms.items.map((item) => (
+                  <li key={item.number} className="flex items-start gap-3">
+                    <span
+                      aria-hidden="true"
+                      className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-300 to-amber-500 text-[#08090C] font-display font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 shadow-sm"
+                    >
+                      {item.number}
+                    </span>
+                    <p className="text-xs sm:text-[13px] leading-relaxed text-slate-200">
+                      {item.text}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
         </div>
       </div>
 
@@ -444,13 +526,24 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
                   {getTierCopy(zoomQrBooking.tier, lang).name} · {zoomQrBooking.quantity}x
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setZoomQrBooking(null)}
-                className="w-full py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors"
-              >
-                {t.close}
-              </button>
+              <div className="w-full flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={downloadingQrCode === zoomQrBooking.bookingCode}
+                  onClick={() => void handleDownloadOriginalQr(zoomQrBooking)}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-white/15 bg-white/[0.06] hover:bg-white/[0.12] disabled:opacity-60 text-xs font-semibold text-white transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  {downloadingQrCode === zoomQrBooking.bookingCode ? t.qrDownloading : t.downloadQr}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setZoomQrBooking(null)}
+                  className="flex-1 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors"
+                >
+                  {t.close}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -495,14 +588,16 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
                 >
                   {t.close}
                 </button>
-                <a
-                  href={previewPng.dataUrl}
-                  download={`${previewPng.code}-genz-pass.png`}
+                <button
+                  type="button"
+                  onClick={() =>
+                    triggerDataUrlDownload(`${previewPng.code}-genz-pass.png`, previewPng.dataUrl)
+                  }
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors"
                 >
                   <Download className="w-3.5 h-3.5" />
                   {t.downloadPng}
-                </a>
+                </button>
               </div>
             </div>
           </div>

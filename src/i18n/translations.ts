@@ -112,14 +112,80 @@ export const PAYMENT_COPY: Record<
       label: 'إنستاباي (InstaPay)',
       sub: 'تحويل بنكي فوري أو عبر عنوان الدفع',
       destination: PAYMENT_PHONE_NUMBER,
-      instructions: `حوّل إجمالي المبلغ عبر إنستاباي إلى الرقم ${PAYMENT_PHONE_NUMBER} ثم أدخل رقم مرجع التحويل أو رقم هاتف المُرسِل بالأسفل.`,
+      instructions: `حوّل إجمالي المبلغ عبر إنستاباي إلى الرقم \u2066${PAYMENT_PHONE_NUMBER}\u2069 ثم أدخل رقم مرجع التحويل أو رقم هاتف المُرسِل بالأسفل.`,
     },
     'Mobile Wallets': {
       label: 'المحافظ الإلكترونية',
       sub: 'فودافون كاش، أورنج، اتصالات، WE Pay',
       destination: PAYMENT_PHONE_NUMBER,
-      instructions: `أرسل إجمالي المبلغ من أي محفظة إلكترونية في مصر إلى الرقم ${PAYMENT_PHONE_NUMBER} ثم أدخل رقم مرجع الرسالة أو رقم المحفظة بالأسفل.`,
+      instructions: `أرسل إجمالي المبلغ من أي محفظة إلكترونية في مصر إلى الرقم \u2066${PAYMENT_PHONE_NUMBER}\u2069 ثم أدخل رقم مرجع الرسالة أو رقم المحفظة بالأسفل.`,
     },
+  },
+};
+
+export const TICKET_ENTRY_TERMS: Record<
+  Language,
+  { title: string; subtitle: string; items: ReadonlyArray<{ number: string; text: string }> }
+> = {
+  en: {
+    title: 'Terms & Conditions',
+    subtitle: 'Entry Rules & Gate Instructions',
+    items: [
+      {
+        number: '1',
+        text: 'The ticket is valid for single-person, one-time entry only (re-entry is not permitted).',
+      },
+      {
+        number: '2',
+        text: 'Please arrive one hour before the concert starts to avoid congestion at the gates.',
+      },
+      {
+        number: '3',
+        text: 'Sold tickets are non-refundable and non-exchangeable, except in the event of concert cancellation by the organizers.',
+      },
+      {
+        number: '4',
+        text: 'Food and beverages, fireworks, lasers, or any sharp objects are strictly prohibited.',
+      },
+      {
+        number: '5',
+        text: 'Please keep your ticket in good condition; damaged or torn tickets are considered invalid.',
+      },
+      {
+        number: '6',
+        text: 'Event management is not responsible for lost personal belongings and reserves the right to remove anyone causing a disturbance without a refund.',
+      },
+    ],
+  },
+  ar: {
+    title: 'شروط وتعليمات الدخول',
+    subtitle: 'TERMS & CONDITIONS',
+    items: [
+      {
+        number: '١',
+        text: 'التذكرة صالحة لدخول فرد واحد فقط ولمرة واحدة (يُمنع الخروج والعودة).',
+      },
+      {
+        number: '٢',
+        text: 'يُرجى الحضور قبل موعد الحفل بساعة لتجنب الزحام عند البوابات.',
+      },
+      {
+        number: '٣',
+        text: 'التذكرة المباعة لا تُرد ولا تُستبدل إلا في حال إلغاء الحفل من قِبل المنظمين.',
+      },
+      {
+        number: '٤',
+        text: 'يُمنع منعاً باتاً دخول المأكولات والمشروبات، الألعاب النارية، الليزر، أو أي أدوات حادة.',
+      },
+      {
+        number: '٥',
+        text: 'يُرجى الحفاظ على التذكرة بحالة جيدة؛ التذكرة التالفة أو المقطوعة تعتبر لاغية.',
+      },
+      {
+        number: '٦',
+        text: 'إدارة الحفل غير مسؤولة عن فقدان المتعلقات الشخصية، وتحتفظ بحق إخراج أي شخص يثير الشغب دون استرداد قيمة التذكرة.',
+      },
+    ],
   },
 };
 
@@ -388,9 +454,14 @@ export const translations = {
     totalLabel: 'Total',
     copyCode: 'Copy Code',
     ePassPng: 'E-Pass PNG',
+    downloadQr: 'Download QR',
+    downloadQrAria: 'Download original-size QR code PNG',
+    qrDownloading: 'Downloading QR...',
+    qrDownloadedPrefix: 'Downloaded full-size QR for',
+    qrDownloadFailed: 'Could not download QR image.',
     whatsappLabel: 'WhatsApp',
     sendReceiptWhatsapp: 'Send Receipt (WhatsApp)',
-    whatsappReceiptAria: 'Send payment receipt via WhatsApp to +201041062000',
+    whatsappReceiptAria: `Send payment receipt via WhatsApp to ${PAYMENT_PHONE_NUMBER}`,
     whatsappPaymentScreenshotNote:
       'Please send your payment screenshot on WhatsApp and our sales representative will confirm your payment.',
     cancelling: 'Cancelling...',
@@ -773,7 +844,7 @@ export const translations = {
     seasonRange: 'السعر',
 
     // Footer
-    footerSubtitle: `إنستاباي: ${PAYMENT_PHONE_NUMBER} · المحافظ الإلكترونية: ${PAYMENT_PHONE_NUMBER} · حفلات صعيد مصر المباشرة`,
+    footerSubtitle: `إنستاباي: \u2066${PAYMENT_PHONE_NUMBER}\u2069 · المحافظ الإلكترونية: \u2066${PAYMENT_PHONE_NUMBER}\u2069 · حفلات صعيد مصر المباشرة`,
 
     // Toasts
     toastEmailVerified: 'تم تفعيل بريدك الإلكتروني! حسابك الآن نشط.',
@@ -850,9 +921,14 @@ export const translations = {
     totalLabel: 'الإجمالي',
     copyCode: 'نسخ الكود',
     ePassPng: 'بطاقة PNG',
+    downloadQr: 'تحميل QR',
+    downloadQrAria: 'تحميل رمز QR بالحجم الأصلي PNG',
+    qrDownloading: 'جارٍ التحميل...',
+    qrDownloadedPrefix: 'تم تحميل رمز QR بالحجم الأصلي للكود',
+    qrDownloadFailed: 'تعذر تحميل صورة رمز QR.',
     whatsappLabel: 'واتساب',
     sendReceiptWhatsapp: 'إرسال الإيصال (واتساب)',
-    whatsappReceiptAria: 'إرسال إيصال الدفع عبر واتساب إلى +201041062000',
+    whatsappReceiptAria: `إرسال إيصال الدفع عبر واتساب إلى ${PAYMENT_PHONE_NUMBER}`,
     whatsappPaymentScreenshotNote:
       'برجاء ارسال اسكرين الدفع علي الواتساب وسيتم تأكيد الدفع من مسؤول البيع',
     cancelling: 'جارٍ الإلغاء...',

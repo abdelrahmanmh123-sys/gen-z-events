@@ -5,6 +5,8 @@ import { fitPosterDimensions, MAX_POSTER_DATA_URL_LENGTH } from './bookingLogic'
 import {
   computeTicketStubRects,
   getTicketDesignForTier,
+  QR_ORIGINAL_EXPORT_MARGIN,
+  QR_ORIGINAL_EXPORT_SIZE,
   TICKET_CANVAS_HEIGHT,
   TICKET_CANVAS_WIDTH,
 } from './ticketDesign';
@@ -61,6 +63,18 @@ export async function generateQrDataUrl(text: string): Promise<string> {
   return QRCode.toDataURL(text, {
     width: 512,
     margin: 1,
+    errorCorrectionLevel: 'M',
+    color: {
+      dark: '#08090C',
+      light: '#FFFFFF',
+    },
+  });
+}
+
+export async function generateOriginalQrDataUrl(text: string): Promise<string> {
+  return QRCode.toDataURL(text, {
+    width: QR_ORIGINAL_EXPORT_SIZE,
+    margin: QR_ORIGINAL_EXPORT_MARGIN,
     errorCorrectionLevel: 'M',
     color: {
       dark: '#08090C',
@@ -348,6 +362,38 @@ export function triggerFileDownload(filename: string, content: string, mimeType:
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function triggerDataUrlDownload(filename: string, dataUrl: string) {
+  try {
+    const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
+    if (match) {
+      const mimeType = match[1];
+      const binary = atob(match[2]);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      return;
+    }
+  } catch {
+    // Fall back to direct data URL anchor download
+  }
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 export function compressPosterImage(file: File): Promise<string> {
