@@ -144,7 +144,7 @@ export const TierColorEditor: React.FC<TierColorEditorProps> = ({
                       </span>
                     </div>
                     {numericPrice !== null && Number.isFinite(numericPrice) && (
-                      <span className="font-mono-num text-[11px] font-semibold text-white shrink-0">
+                      <span className="font-modern-price text-xs font-semibold tracking-tight rtl:tracking-normal text-white shrink-0">
                         {formatCurrencyEgp(numericPrice, lang)}
                       </span>
                     )}

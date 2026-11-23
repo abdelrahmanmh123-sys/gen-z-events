@@ -36,7 +36,6 @@ export const PassTiersSection: React.FC<PassTiersSectionProps> = ({ concerts }) 
           <h2 className="font-display font-bold text-2xl sm:text-3xl text-white">
             {t.comparePassTiers}
           </h2>
-          <p className="text-sm text-slate-400">{t.passTiersSubtitle}</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -65,14 +64,16 @@ export const PassTiersSection: React.FC<PassTiersSectionProps> = ({ concerts }) 
                   <p className="text-[11px] uppercase tracking-wider rtl:tracking-normal text-slate-500 font-semibold">
                     {t.seasonRange}
                   </p>
-                  <p className="font-mono-num text-base font-bold text-white mt-0.5">
+                  <p className="font-modern-price text-base font-bold tracking-tight rtl:tracking-normal text-white mt-0.5">
                     {getRange(tier.id)}
                   </p>
                 </div>
 
                 <div className="pt-3 border-t border-white/8 space-y-1.5 flex-1">
-                  <p className="text-xs font-semibold text-white">{copy.perk}</p>
-                  <p className="text-xs text-slate-400 leading-relaxed">{copy.details}</p>
+                  {copy.compareLead && (
+                    <p className="text-xs font-semibold text-white">{copy.compareLead}</p>
+                  )}
+                  <p className="text-xs text-slate-300 leading-relaxed">{copy.details}</p>
                 </div>
               </div>
             );

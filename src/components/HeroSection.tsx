@@ -103,7 +103,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     </h2>
                     <p className="text-sm text-slate-300">{nextConcert.artist}</p>
                   </div>
-                  <span className="font-mono-num text-sm font-bold text-white shrink-0">
+                  <span className="font-modern-price text-base font-bold tracking-tight rtl:tracking-normal text-white shrink-0">
                     {lang === 'ar'
                       ? `من ${formatCurrencyEgp(getTierUnitPrice(nextConcert, 'Silver'), lang)}`
                       : `${formatCurrencyEgp(getTierUnitPrice(nextConcert, 'Silver'), lang)}+`}

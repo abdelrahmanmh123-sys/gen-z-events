@@ -43,6 +43,11 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .font-modern-price {
+    font-family: "Space Grotesk", "Cairo", ui-sans-serif, system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+
   button:not(:disabled),
   [role="button"] {
     cursor: pointer;

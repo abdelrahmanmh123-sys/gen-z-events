@@ -121,7 +121,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
   }, [permissions, t, offlineCount]);
 
   const visibleKpis = useMemo(() => {
-    const base = [
+    const base: Array<{ label: string; value: string; tone: string; isPrice?: boolean }> = [
       { label: t.kpiLiveEvents, value: kpis.liveEvents.toString(), tone: 'text-white' },
       { label: t.kpiSeatsLeft, value: kpis.seatsRemaining.toLocaleString(), tone: 'text-white' },
       { label: t.kpiTicketsSold, value: kpis.ticketsSold.toLocaleString(), tone: 'text-amber-300' },
@@ -132,6 +132,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
         label: t.kpiPaidRevenue,
         value: formatCurrencyEgp(kpis.totalRevenueEgp, lang),
         tone: 'text-white',
+        isPrice: true,
       });
     }
     return base;
@@ -240,7 +241,13 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
                 <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
                   {stat.label}
                 </p>
-                <p className={`font-mono-num text-lg sm:text-xl font-bold mt-1 ${stat.tone}`}>
+                <p
+                  className={`${
+                    stat.isPrice
+                      ? 'font-modern-price tracking-tight rtl:tracking-normal'
+                      : 'font-mono-num'
+                  } text-lg sm:text-xl font-bold mt-1 ${stat.tone}`}
+                >
                   {stat.value}
                 </p>
               </div>

@@ -416,7 +416,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                           </span>
                           {active && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
                         </div>
-                        <p className="font-mono-num text-base font-bold text-white mt-1.5">
+                        <p className="font-modern-price text-base font-bold tracking-tight rtl:tracking-normal text-white mt-1.5">
                           {formatCurrencyEgp(price, lang)}
                         </p>
                         <p className="text-[11px] text-slate-400 mt-1 leading-snug">{tierCopy.perk}</p>
@@ -645,12 +645,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     {totals.quantity > 1 ? t.passesWord : t.passWord}
                   </span>
                   {totals.discountEgp > 0 && (
-                    <span className="font-mono-num text-emerald-400 font-semibold" dir="ltr">
+                    <span className="font-modern-price text-emerald-400 font-semibold" dir="ltr">
                       (-{formatCurrencyEgp(totals.discountEgp, lang)} {totals.promoResult.code})
                     </span>
                   )}
                 </div>
-                <p className="font-mono-num text-xl font-bold text-white leading-tight">
+                <p className="font-modern-price text-xl font-bold tracking-tight rtl:tracking-normal text-white leading-tight">
                   {formatCurrencyEgp(totals.totalEgp, lang)}
                 </p>
               </div>

@@ -387,7 +387,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
                   required
                   value={val}
                   onChange={(e) => setter(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[#101218] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
+                  className="w-full px-3 py-2 rounded-lg bg-[#101218] border border-white/12 text-sm text-white font-modern-price focus:outline-none focus:border-white/50"
                 />
               </div>
             ))}

@@ -21,50 +21,66 @@ export function formatCurrencyEgp(amount: number, lang: Language): string {
 
 export const TIER_COPY: Record<
   Language,
-  Record<TierId, { name: string; perk: string; details: string }>
+  Record<TierId, { name: string; perk: string; compareLead: string; details: string }>
 > = {
   en: {
     Silver: {
       name: 'Silver',
-      perk: 'Main Arena Standing',
-      details: 'Full stage sightlines, general festival gate entry, and arena bar access.',
+      perk: 'Arena Floor · Clear Stage View',
+      compareLead: '',
+      details:
+        'Enjoy the concert atmosphere on the arena floor with a clear view of the stage and organized entry & exit gates.',
     },
     Gold: {
       name: 'Gold',
-      perk: 'Front Pit + Fast Track',
-      details: 'Dedicated front-of-stage pit zone with express wristband check-in lane.',
+      perk: 'Mid-Arena · Closer View & Sound',
+      compareLead: '',
+      details:
+        'Mid-arena — positioned in the central zone closer to the stage with clearer sightlines and sound, complete organization, and secure barriers separating zones.',
     },
     VIP: {
-      name: 'VIP',
-      perk: 'Elevated Deck + Priority Gate',
-      details: 'Raised acoustic viewing deck, private restrooms, and priority entry gate.',
+      name: 'Fan Pit',
+      perk: 'Right in Front of the Stage',
+      compareLead: 'Right in Front of the Stage',
+      details:
+        'The closest point to the stage so you can live every moment and interact with the concert right from the front row.',
     },
     Lounge: {
       name: 'Lounge',
-      perk: 'Private Table + Host Service',
-      details: 'Reserved lounge table for your group with dedicated host & welcome refreshments.',
+      perk: 'Front-Side Exclusive Area & Privacy',
+      compareLead: '',
+      details:
+        'A distinguished area on both sides of the front zone next to the stage, combining closeness to the stage with complete privacy away from the crowd.',
     },
   },
   ar: {
     Silver: {
-      name: 'سيلفر',
-      perk: 'الساحة الرئيسية (وقوف)',
-      details: 'رؤية كاملة للمسرح، دخول من البوابة العامة، وإمكانية الوصول لكافيهات الساحة.',
+      name: 'سيلفر (Silver)',
+      perk: 'أرضية الملعب · رؤية واضحة للمسرح',
+      compareLead: '',
+      details:
+        'استمتع بأجواء الحفلة في أرضية الملعب برؤية واضحة للمسرح، وبوابات دخول وخروج منظمة',
     },
     Gold: {
-      name: 'جولد',
-      perk: 'الصفوف الأمامية + دخول سريع',
-      details: 'منطقة أمامية قريبة من المسرح مع ممر سريع لاستلام الأسورة والدخول.',
+      name: 'جولد (Gold)',
+      perk: 'في نص الملعب · رؤية وصوت أوضح',
+      compareLead: '',
+      details:
+        'في نص الملعب - مكانك في المنطقة الوسطى قريب من المسرح برؤية وصوت أوضح، وسط تنظيم كامل وحواجز آمنة تفصل بين المناطق.',
     },
     VIP: {
-      name: 'VIP',
-      perk: 'منصة مرتفعة + بوابة أولوية',
-      details: 'منصة مشاهدة مرتفعة بصوتيات مميزة، حمامات خاصة، وبوابة دخول بأولوية.',
+      name: 'فان بيت (Fan Pit)',
+      perk: 'قدام المسرح على طول',
+      compareLead: 'قدام المسرح على طول',
+      details:
+        'أقرب نقطة للمسرح عشان تعيش كل لحظة وتتفاعل مع الحفلة من أول صف',
     },
     Lounge: {
-      name: 'لاونج',
-      perk: 'طاولة خاصة + ضيافة ومضيف',
-      details: 'طاولة لاونج محجوزة لمجموعتك مع مضيف خاص ومشروبات ترحيبية.',
+      name: 'لاونج (Lounge)',
+      perk: 'بجوار المسرح · خصوصية كاملة',
+      compareLead: '',
+      details:
+        'مساحة مميزة على جانبي المنطقة الأمامية بجوار المسرح، تجمع بين القرب من المسرح والخصوصية الكاملة بعيداً عن الزحمة.',
     },
   },
 };
@@ -286,12 +302,12 @@ export const translations = {
     bookPass: 'Book Pass',
     removeFavAria: 'Remove from favorites',
     saveFavAria: 'Save to favorites',
-    shareWhatsappAria: 'Share on WhatsApp',
+    shareLabel: 'Share',
+    shareCopiedLabel: 'Copied',
+    shareEventAria: 'Share event',
 
     // Pass Tiers Section
     transparentAccess: 'Transparent Access',
-    passTiersSubtitle:
-      'Every Qena concert offers four distinct zones. Prices are set per show with zero hidden service fees.',
     seasonRange: 'Season Range',
 
     // Footer
@@ -307,6 +323,9 @@ export const translations = {
     toastCopiedPromoSuffix: '— paste it during checkout!',
     toastPassReservedPrefix: 'Pass reserved',
     toastPassReservedSuffix: 'Open My Tickets to track verification.',
+    toastEventShared: 'Event details shared!',
+    toastEventCopied: 'Event details copied — ready to share!',
+    toastEventShareFailed: 'Could not share event details right now.',
 
     // Booking Modal
     closeBookingAria: 'Close booking modal',
@@ -369,10 +388,11 @@ export const translations = {
     totalLabel: 'Total',
     copyCode: 'Copy Code',
     ePassPng: 'E-Pass PNG',
-    icsLabel: '.ICS',
     whatsappLabel: 'WhatsApp',
     sendReceiptWhatsapp: 'Send Receipt (WhatsApp)',
     whatsappReceiptAria: 'Send payment receipt via WhatsApp to +201041062000',
+    whatsappPaymentScreenshotNote:
+      'Please send your payment screenshot on WhatsApp and our sales representative will confirm your payment.',
     cancelling: 'Cancelling...',
     confirmCancel: 'Confirm Cancel',
     keep: 'Keep',
@@ -388,7 +408,6 @@ export const translations = {
     tapQrToEnlarge: 'Tap QR to enlarge',
     ePassGenerating: 'Generating...',
     copiedCodePrefix: 'Copied booking code',
-    calendarDownloaded: 'Calendar invite downloaded.',
     pngRenderFailed: 'Could not render PNG pass.',
     cancelledReservationPrefix: 'Cancelled reservation',
 
@@ -518,6 +537,11 @@ export const translations = {
     confirmPayAndApprove: 'Confirm Payment & Approve Entry',
     pointCameraHint: 'Point camera at fan QR pass…',
     cameraIdleHint: 'Camera scanner idle. Tap Open Camera Scanner or upload a PNG pass.',
+    cameraLiveBadge: 'LIVE SCANNER ACTIVE',
+    scanNextBtn: 'Scan Next',
+    scannedCodeLabel: 'Scanned QR',
+    snapQrCamera: 'Snap QR with Camera',
+    retryCamera: 'Retry Live Camera',
     searchRosterPlaceholder: 'Search attendee roster...',
     searchRosterAria: 'Search attendee roster',
     filterAll: 'All',
@@ -702,10 +726,10 @@ export const translations = {
     primaryNavAria: 'التنقل الرئيسي',
 
     // Hero
-    heroKicker: 'حفلات قنا المباشرة · موسم شتاء ٢٠٢٦ / ٢٠٢٧',
-    heroTitle: 'مسرح الصعيد الأول للحفلات الحية والموسيقى.',
+    heroKicker: 'حفلات قنا • شتاء ٢٠٢٦ / ٢٠٢٧',
+    heroTitle: 'الوجهة الأولى لأضخم الحفلات في الصعيد',
     heroSubtitle:
-      'احجز تذاكر سيلفر، جولد، VIP، أو اللاونج الخاص في أكبر مسارح قنا المفتوحة مع دخول فوري عبر رمز QR على البوابة.',
+      'احجز تذكرتك (سيلفر – جولد – في آي بي – لاونج) بأكبر استادات وساحات قنا المفتوحة، مع استلام تذكرتك ودخولك الفوري بكود QR.',
     exploreLineup: 'استكشف الحفلات',
     comparePassTiers: 'قارن فئات التذاكر',
     nextUpInQena: 'الحفل القادم في قنا',
@@ -740,13 +764,13 @@ export const translations = {
     bookPass: 'احجز تذكرتك',
     removeFavAria: 'إزالة من المفضلة',
     saveFavAria: 'حفظ في المفضلة',
-    shareWhatsappAria: 'مشاركة عبر واتساب',
+    shareLabel: 'مشاركة',
+    shareCopiedLabel: 'تم النسخ',
+    shareEventAria: 'مشاركة الحفل',
 
     // Pass Tiers Section
     transparentAccess: 'فئات دخول واضحة',
-    passTiersSubtitle:
-      'كل حفل في قنا يضم أربع فئات مميزة بأسعار واضحة لكل حفل وبدون أي رسوم خفية.',
-    seasonRange: 'نطاق الأسعار بالموسم',
+    seasonRange: 'السعر',
 
     // Footer
     footerSubtitle: `إنستاباي: ${PAYMENT_PHONE_NUMBER} · المحافظ الإلكترونية: ${PAYMENT_PHONE_NUMBER} · حفلات صعيد مصر المباشرة`,
@@ -761,6 +785,9 @@ export const translations = {
     toastCopiedPromoSuffix: '— الصقه عند إتمام الحجز!',
     toastPassReservedPrefix: 'تم حجز التذكرة',
     toastPassReservedSuffix: 'افتح «تذاكري» لمتابعة تأكيد الدفع.',
+    toastEventShared: 'تمت مشاركة تفاصيل الحفل!',
+    toastEventCopied: 'تم نسخ تفاصيل الحفل — جاهز للمشاركة!',
+    toastEventShareFailed: 'تعذر مشاركة تفاصيل الحفل حالياً.',
 
     // Booking Modal
     closeBookingAria: 'إغلاق نافذة الحجز',
@@ -823,10 +850,11 @@ export const translations = {
     totalLabel: 'الإجمالي',
     copyCode: 'نسخ الكود',
     ePassPng: 'بطاقة PNG',
-    icsLabel: 'التقويم .ICS',
     whatsappLabel: 'واتساب',
     sendReceiptWhatsapp: 'إرسال الإيصال (واتساب)',
     whatsappReceiptAria: 'إرسال إيصال الدفع عبر واتساب إلى +201041062000',
+    whatsappPaymentScreenshotNote:
+      'برجاء ارسال اسكرين الدفع علي الواتساب وسيتم تأكيد الدفع من مسؤول البيع',
     cancelling: 'جارٍ الإلغاء...',
     confirmCancel: 'تأكيد الإلغاء',
     keep: 'إبقاء',
@@ -842,7 +870,6 @@ export const translations = {
     tapQrToEnlarge: 'اضغط على الرمز للتكبير',
     ePassGenerating: 'جارٍ التجهيز...',
     copiedCodePrefix: 'تم نسخ كود الحجز',
-    calendarDownloaded: 'تم تحميل ملف التذكير بالتقويم.',
     pngRenderFailed: 'تعذر تجهيز صورة التذكرة.',
     cancelledReservationPrefix: 'تم إلغاء الحجز',
 
@@ -971,6 +998,11 @@ export const translations = {
     confirmPayAndApprove: 'تأكيد الدفع والسماح بالدخول',
     pointCameraHint: 'وجّه الكاميرا نحو رمز QR التذكرة…',
     cameraIdleHint: 'ماسح الكاميرا متوقف. اضغط تشغيل الكاميرا أو ارفع صورة التذكرة.',
+    cameraLiveBadge: 'الماسح يعمل مباشرة',
+    scanNextBtn: 'مسح تذكرة تالية',
+    scannedCodeLabel: 'الرمز الممسوح',
+    snapQrCamera: 'التقاط QR بالكاميرا',
+    retryCamera: 'إعادة محاولة الكاميرا',
     searchRosterPlaceholder: 'ابحث في قائمة الحضور...',
     searchRosterAria: 'البحث في قائمة الحضور',
     filterAll: 'الكل',

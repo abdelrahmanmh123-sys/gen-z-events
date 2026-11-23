@@ -250,7 +250,7 @@ export const AdminManage: React.FC<AdminManageProps> = ({
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3.5 font-mono-num">
+                        <td className="px-4 py-3.5 font-modern-price">
                           {isEditing ? (
                             <div className="flex flex-wrap gap-1.5">
                               {(
@@ -276,7 +276,7 @@ export const AdminManage: React.FC<AdminManageProps> = ({
                             </div>
                           ) : (
                             <div className="space-y-1">
-                              <span dir="ltr" className="inline-block text-slate-300">
+                              <span dir="ltr" className="inline-block font-modern-price font-semibold text-slate-200">
                                 {getTierUnitPrice(c, 'Silver').toLocaleString('en-US')} /{' '}
                                 {getTierUnitPrice(c, 'Gold').toLocaleString('en-US')} /{' '}
                                 {getTierUnitPrice(c, 'VIP').toLocaleString('en-US')} /{' '}

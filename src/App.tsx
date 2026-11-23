@@ -635,6 +635,7 @@ export default function App() {
                     isFavorite={activeFavoriteIds.includes(concert.id)}
                     onToggleFavorite={(id) => void handleToggleFavorite(id)}
                     onBook={(c) => setBookingConcert(c)}
+                    onNotify={showToast}
                   />
                 ))}
               </div>

@@ -431,10 +431,10 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
       {/* Offline KPI Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: t.kpiOfflineOrders, value: offlineKpis.orders.toLocaleString(), tone: 'text-white' },
-          { label: t.kpiOfflineTickets, value: offlineKpis.ticketsSold.toLocaleString(), tone: 'text-amber-300' },
-          { label: t.kpiOfflineRevenue, value: formatCurrencyEgp(offlineKpis.revenueEgp, lang), tone: 'text-white' },
-          { label: t.kpiOfflineCheckedIn, value: offlineKpis.checkedIn.toLocaleString(), tone: 'text-emerald-400' },
+          { label: t.kpiOfflineOrders, value: offlineKpis.orders.toLocaleString(), tone: 'text-white', isPrice: false },
+          { label: t.kpiOfflineTickets, value: offlineKpis.ticketsSold.toLocaleString(), tone: 'text-amber-300', isPrice: false },
+          { label: t.kpiOfflineRevenue, value: formatCurrencyEgp(offlineKpis.revenueEgp, lang), tone: 'text-white', isPrice: true },
+          { label: t.kpiOfflineCheckedIn, value: offlineKpis.checkedIn.toLocaleString(), tone: 'text-emerald-400', isPrice: false },
         ].map((item) => (
           <div
             key={item.label}
@@ -443,7 +443,15 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
             <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
               {item.label}
             </p>
-            <p className={`font-mono-num text-lg font-bold mt-1 ${item.tone}`}>{item.value}</p>
+            <p
+              className={`${
+                item.isPrice
+                  ? 'font-modern-price tracking-tight rtl:tracking-normal'
+                  : 'font-mono-num'
+              } text-lg font-bold mt-1 ${item.tone}`}
+            >
+              {item.value}
+            </p>
           </div>
         ))}
       </div>
@@ -521,7 +529,9 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
               <CheckCircle2 className="w-3.5 h-3.5" />
               {parsedImport.validBookings.length} {t.validRowsWord} ·{' '}
               {parsedImport.totalTickets.toLocaleString()} {t.ticketsLower} ·{' '}
-              {formatCurrencyEgp(parsedImport.totalRevenueEgp, lang)}
+              <span className="font-modern-price font-bold">
+                {formatCurrencyEgp(parsedImport.totalRevenueEgp, lang)}
+              </span>
             </span>
             {parsedImport.errors.length > 0 && (
               <span className="inline-flex items-center gap-1.5 text-rose-300 font-semibold">
@@ -584,7 +594,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
                             </span>
                           </td>
                           <td className="px-3 py-2 font-mono-num text-white">{b.quantity}</td>
-                          <td className="px-3 py-2 font-mono-num text-white">
+                          <td className="px-3 py-2 font-modern-price font-semibold text-white">
                             {formatCurrencyEgp(b.totalEgp, lang)}
                           </td>
                           <td className="px-3 py-2 text-slate-300">{b.transferRef}</td>
@@ -702,7 +712,11 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
               </div>
               <div>
                 <label htmlFor="off-amount" className="block text-xs font-medium text-slate-300 mb-1">
-                  {t.totalEgpAuto} ({t.autoPrefix}: {manualExpectedTotal.toLocaleString()})
+                  {t.totalEgpAuto} ({t.autoPrefix}:{' '}
+                  <span className="font-modern-price font-semibold text-white">
+                    {manualExpectedTotal.toLocaleString()}
+                  </span>
+                  )
                 </label>
                 <input
                   id="off-amount"
@@ -711,7 +725,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
                   max={50000000}
                   value={manualAmount}
                   onChange={(e) => setManualAmount(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white font-mono-num"
+                  className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white font-modern-price"
                 />
               </div>
             </div>
@@ -893,7 +907,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
                           >
                             {b.quantity}x {getTierCopy(b.tier, lang).name}
                           </span>
-                          <span className="font-mono-num text-slate-300">
+                          <span className="font-modern-price font-semibold text-slate-200">
                             {formatCurrencyEgp(b.totalEgp, lang)}
                           </span>
                         </div>

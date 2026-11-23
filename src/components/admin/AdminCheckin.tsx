@@ -1,15 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import {
+  AlertTriangle,
   Camera,
   CameraOff,
   CheckCircle2,
   ImageUp,
+  RotateCcw,
   Search,
+  ShieldAlert,
   Trash2,
   Volume2,
   VolumeX,
   X,
+  XCircle,
 } from 'lucide-react';
 import {
   adminConfirmAndCheckIn,
@@ -19,6 +23,15 @@ import {
 } from '../../services/firestoreService';
 import { formatFriendlyFirebaseError } from '../../firebase';
 import type { Booking } from '../../types';
+import {
+  buildUnreadableQrVerdict,
+  classifyCameraError,
+  computeDecodedImageDimensions,
+  evaluateGateQrScan,
+  getCameraConstraintFallbacks,
+  type CameraErrorInfo,
+  type GateScanVerdict,
+} from '../../utils/gateScanLogic';
 import { playGateTone } from '../../utils/passExport';
 import { useLanguage } from '../../i18n/LanguageContext';
 import {
@@ -49,13 +62,10 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
 }) => {
   const { lang, isAr, t } = useLanguage();
   const [manualCode, setManualCode] = useState('');
-  const [scanResult, setScanResult] = useState<{
-    kind: 'success' | 'warn' | 'error';
-    message: string;
-    booking?: Booking;
-  } | null>(null);
+  const [scanResult, setScanResult] = useState<GateScanVerdict | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<CameraErrorInfo | null>(null);
   const [rosterSearch, setRosterSearch] = useState('');
   const [rosterFilter, setRosterFilter] = useState<RosterFilter>('all');
   const [confirmDeleteCode, setConfirmDeleteCode] = useState<string | null>(null);
@@ -82,6 +92,10 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     }
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -93,61 +107,56 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     return () => stopCamera();
   }, []);
 
+  const resetScanForNext = () => {
+    setScanResult(null);
+    setManualCode('');
+    lastScannedRef.current = '';
+    if (cooldownTimerRef.current !== null) {
+      window.clearTimeout(cooldownTimerRef.current);
+      cooldownTimerRef.current = null;
+    }
+  };
+
   const verifyCode = async (rawCode: string, method: string) => {
-    const code = rawCode.trim().toUpperCase();
-    if (!code || verifyingRef.current) return;
-    const found = bookings.find((b) => b.bookingCode.toUpperCase() === code);
+    const trimmed = rawCode.trim();
+    if (!trimmed || verifyingRef.current) return;
+
+    const evaluation = evaluateGateQrScan(trimmed, bookings, {
+      lang,
+      canConfirmPayments,
+    });
+
+    if (!evaluation.isValid || !evaluation.booking) {
+      playGateTone(evaluation.tone === 'warn' ? 'warn' : 'error', soundEnabled);
+      setScanResult(evaluation);
+      return;
+    }
+
+    const found = bookings.find(
+      (b) => b.bookingCode.trim().toUpperCase() === evaluation.booking!.bookingCode.trim().toUpperCase(),
+    );
     if (!found) {
       playGateTone('error', soundEnabled);
-      setScanResult({
-        kind: 'error',
-        message: isAr ? `لا توجد تذكرة مطابقة للكود «${code}».` : `No ticket found matching "${code}".`,
-      });
+      setScanResult(evaluation);
       return;
     }
-    if (found.checkedIn) {
-      playGateTone('warn', soundEnabled);
-      setScanResult({
-        kind: 'warn',
-        message: isAr
-          ? `${found.customerName} (${found.bookingCode}) تم تسجيل دخوله مسبقاً في ${found.checkedInAt || 'وقت سابق'}.`
-          : `${found.customerName} (${found.bookingCode}) already checked in at ${found.checkedInAt || 'earlier'}.`,
-        booking: found,
-      });
-      return;
-    }
-    if (found.paymentStatus !== 'Paid') {
-      playGateTone('warn', soundEnabled);
-      setScanResult({
-        kind: 'warn',
-        message: canConfirmPayments
-          ? isAr
-            ? `${found.customerName} (${found.bookingCode}) لم يتم تأكيد الدفع بعد (${getPaymentMethodLabel(found.paymentMethod, lang)} · مرجع: ${found.transferRef}). أكّد التحويل بالأسفل قبل الدخول.`
-            : `${found.customerName} (${found.bookingCode}) is UNPAID (${found.paymentMethod} Ref: ${found.transferRef}). Confirm transfer below before entry.`
-          : isAr
-            ? `${found.customerName} (${found.bookingCode}) لم يتم تأكيد الدفع بعد (${getPaymentMethodLabel(found.paymentMethod, lang)} · مرجع: ${found.transferRef}). تأكيد الدفع متاح للمشرف العام فقط.`
-            : `${found.customerName} (${found.bookingCode}) is UNPAID (${found.paymentMethod} Ref: ${found.transferRef}). Payment confirmation requires a Super Admin.`,
-        booking: found,
-      });
-      return;
-    }
+
     verifyingRef.current = true;
     try {
       await adminToggleCheckIn(found, true, adminName, method);
       playGateTone('success', soundEnabled);
-      const tierLabel = getTierCopy(found.tier, lang).name;
-      setScanResult({
-        kind: 'success',
-        message: isAr
-          ? `تمت الموافقة على الدخول · ${found.customerName} — ${found.quantity}x ${tierLabel} (${found.concertTitle})`
-          : `ENTRY APPROVED · ${found.customerName} — ${found.quantity}x ${tierLabel} (${found.concertTitle})`,
-        booking: { ...found, checkedIn: true },
-      });
+      setScanResult(evaluation);
       onNotify(isAr ? `تم تسجيل دخول ${found.bookingCode}.` : `Checked in ${found.bookingCode}.`);
     } catch (err) {
+      playGateTone('error', soundEnabled);
       setScanResult({
-        kind: 'error',
-        message: localizeKnownMessage(formatFriendlyFirebaseError(err), lang),
+        status: 'invalid_not_found',
+        isValid: false,
+        tone: 'error',
+        verdictBadge: isAr ? 'خطأ في التحقق' : 'VERIFICATION ERROR',
+        headline: isAr ? 'تعذر إتمام تسجيل الدخول' : 'Check-In Failed',
+        reason: localizeKnownMessage(formatFriendlyFirebaseError(err), lang),
+        scannedCode: found.bookingCode,
       });
     } finally {
       verifyingRef.current = false;
@@ -158,65 +167,122 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
 
   const startCamera = async () => {
     if (!isVerifiedStaff) return;
+    setCameraError(null);
+
+    const isEmbedded = (() => {
+      try {
+        return window.self !== window.top;
+      } catch {
+        return true;
+      }
+    })();
+    const isSecure = typeof window !== 'undefined' ? Boolean(window.isSecureContext) : true;
+
     if (!navigator.mediaDevices?.getUserMedia) {
-      onNotify(
-        isAr
-          ? 'الكاميرا غير متاحة في هذا المتصفح. استخدم رفع صورة PNG أو الإدخال اليدوي.'
-          : 'Camera API is unavailable on this browser. Use PNG upload or manual code.',
+      const info = classifyCameraError(
+        { name: isSecure ? 'NotFoundError' : 'SecurityError' },
+        { lang, isEmbedded, isSecureContext: isSecure },
       );
+      setCameraError(info);
+      onNotify(info.detail);
       return;
     }
+
     stopCamera();
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      });
-      streamRef.current = stream;
-      setCameraActive(true);
-      cameraTimerRef.current = window.setTimeout(() => {
-        cameraTimerRef.current = null;
-        if (!streamRef.current) return;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play();
+    const fallbacks = getCameraConstraintFallbacks();
+    let stream: MediaStream | null = null;
+    let lastError: unknown = null;
+
+    for (const constraints of fallbacks) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        break;
+      } catch (err) {
+        lastError = err;
+        const errName =
+          err && typeof err === 'object' && 'name' in err
+            ? String((err as { name?: unknown }).name || '')
+            : '';
+        // Permission or security errors will not succeed with looser constraints
+        if (
+          errName === 'NotAllowedError' ||
+          errName === 'PermissionDeniedError' ||
+          errName === 'SecurityError'
+        ) {
+          break;
         }
-        const scanLoop = () => {
-          const video = videoRef.current;
-          const canvas = canvasRef.current;
-          if (!video || !canvas || !streamRef.current) return;
-          if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            if (ctx) {
-              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-              const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              const decoded = jsQR(imgData.data, imgData.width, imgData.height);
-              if (decoded?.data && decoded.data !== lastScannedRef.current) {
-                lastScannedRef.current = decoded.data;
-                setManualCode(decoded.data);
-                void verifyCodeRef.current(decoded.data, 'Camera QR');
-                if (cooldownTimerRef.current !== null) {
-                  window.clearTimeout(cooldownTimerRef.current);
-                }
-                cooldownTimerRef.current = window.setTimeout(() => {
-                  lastScannedRef.current = '';
-                  cooldownTimerRef.current = null;
-                }, 3000);
+      }
+    }
+
+    if (!stream) {
+      const info = classifyCameraError(lastError, {
+        lang,
+        isEmbedded,
+        isSecureContext: isSecure,
+      });
+      setCameraError(info);
+      onNotify(info.detail);
+      return;
+    }
+
+    streamRef.current = stream;
+    setCameraActive(true);
+
+    const attachAndScan = async () => {
+      const video = videoRef.current;
+      if (!video || !streamRef.current) return;
+      video.srcObject = stream;
+      video.setAttribute('playsinline', 'true');
+      video.setAttribute('webkit-playsinline', 'true');
+      try {
+        await video.play();
+      } catch {
+        // Autoplay fallback: user already tapped Open Camera; continue scan loop once frames arrive
+      }
+
+      const scanLoop = () => {
+        const activeVideo = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!activeVideo || !canvas || !streamRef.current) return;
+        if (
+          activeVideo.readyState >= activeVideo.HAVE_CURRENT_DATA &&
+          activeVideo.videoWidth > 0 &&
+          activeVideo.videoHeight > 0
+        ) {
+          const scaled = computeDecodedImageDimensions(
+            activeVideo.videoWidth,
+            activeVideo.videoHeight,
+            960,
+          );
+          canvas.width = scaled.width;
+          canvas.height = scaled.height;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          if (ctx) {
+            ctx.drawImage(activeVideo, 0, 0, canvas.width, canvas.height);
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const decoded = jsQR(imgData.data, imgData.width, imgData.height, {
+              inversionAttempts: 'attemptBoth',
+            });
+            if (decoded?.data && decoded.data !== lastScannedRef.current) {
+              lastScannedRef.current = decoded.data;
+              setManualCode(decoded.data);
+              void verifyCodeRef.current(decoded.data, 'Camera QR');
+              if (cooldownTimerRef.current !== null) {
+                window.clearTimeout(cooldownTimerRef.current);
               }
+              cooldownTimerRef.current = window.setTimeout(() => {
+                lastScannedRef.current = '';
+                cooldownTimerRef.current = null;
+              }, 3000);
             }
           }
-          rafRef.current = requestAnimationFrame(scanLoop);
-        };
+        }
         rafRef.current = requestAnimationFrame(scanLoop);
-      }, 150);
-    } catch {
-      onNotify(
-        isAr
-          ? 'تم رفض الوصول للكاميرا أو أن المعاينة تمنعها. افتح الموقع المباشر لمسح الكاميرا، أو استخدم رفع صورة PNG أو الإدخال اليدوي.'
-          : 'Camera access was denied or blocked in this preview frame. Open the live site for camera scanning, or use Scan Ticket PNG / manual code.',
-      );
-    }
+      };
+      rafRef.current = requestAnimationFrame(scanLoop);
+    };
+
+    void attachAndScan();
   };
 
   const handleScanImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -224,12 +290,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     if (!file) return;
     const reportNotFound = (customMsg?: string) => {
       playGateTone('error', soundEnabled);
-      setScanResult({
-        kind: 'error',
-        message:
-          customMsg ||
-          (isAr ? 'لم يتم اكتشاف رمز QR في الصورة المرفوعة.' : 'No QR code detected in the uploaded image.'),
-      });
+      setScanResult(buildUnreadableQrVerdict(lang, customMsg));
     };
 
     const reader = new FileReader();
@@ -246,14 +307,32 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (!ctx) return;
 
-        // 1. Try full image first
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
+        // 1. Try scaled full image first (handles 12MP-50MP Samsung phone photos cleanly & fast)
+        const scaled = computeDecodedImageDimensions(img.width, img.height, 1400);
+        canvas.width = scaled.width;
+        canvas.height = scaled.height;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const fullData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        let decoded = jsQR(fullData.data, fullData.width, fullData.height);
+        let decoded = jsQR(fullData.data, fullData.width, fullData.height, {
+          inversionAttempts: 'attemptBoth',
+        });
 
-        // 2. Fallback: isolate right-hand ticket stub where our 3:1 pass QR sits (at 2x scale for small screenshots)
+        // 2. Fallback: isolate center square (typical mobile photo framing)
+        if (!decoded?.data && img.width > 200 && img.height > 200) {
+          const cropSize = Math.floor(Math.min(img.width, img.height) * 0.72);
+          const sx = Math.floor((img.width - cropSize) / 2);
+          const sy = Math.floor((img.height - cropSize) / 2);
+          const centerDims = computeDecodedImageDimensions(cropSize, cropSize, 1000);
+          canvas.width = centerDims.width;
+          canvas.height = centerDims.height;
+          ctx.drawImage(img, sx, sy, cropSize, cropSize, 0, 0, canvas.width, canvas.height);
+          const centerData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          decoded = jsQR(centerData.data, centerData.width, centerData.height, {
+            inversionAttempts: 'attemptBoth',
+          });
+        }
+
+        // 3. Fallback: isolate right-hand ticket stub where our 3:1 pass QR sits (at 2x scale for small screenshots)
         if (!decoded?.data && img.width > 120 && img.height > 80) {
           const sx = Math.floor(img.width * 0.7);
           const sy = Math.floor(img.height * 0.35);
@@ -265,12 +344,14 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
           ctx.imageSmoothingEnabled = false;
           ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
           const stubData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          decoded = jsQR(stubData.data, stubData.width, stubData.height);
+          decoded = jsQR(stubData.data, stubData.width, stubData.height, {
+            inversionAttempts: 'attemptBoth',
+          });
         }
 
         if (decoded?.data) {
           setManualCode(decoded.data);
-          void verifyCode(decoded.data, 'PNG QR Upload');
+          void verifyCode(decoded.data, 'Camera / Photo QR');
         } else {
           reportNotFound();
         }
@@ -305,10 +386,15 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
       setScanResult((prev) =>
         prev?.booking?.bookingCode === b.bookingCode
           ? {
-              kind: 'success',
-              message: isAr
-                ? `تم تأكيد الدفع · ${b.customerName} (${b.bookingCode}) — جاهز للدخول على البوابة.`
-                : `PAYMENT CONFIRMED · ${b.customerName} (${b.bookingCode}) — Ready for gate entry.`,
+              status: 'valid_ready',
+              isValid: true,
+              tone: 'success',
+              verdictBadge: isAr ? 'تم تأكيد الدفع — جاهز للدخول' : 'PAYMENT CONFIRMED — READY',
+              headline: `${b.customerName} (${b.bookingCode})`,
+              reason: isAr
+                ? 'تم تأكيد دفع التذكرة بنجاح وأصبحت صالحة للدخول على البوابة الآن.'
+                : 'Payment has been confirmed and this ticket is now valid for gate entry.',
+              scannedCode: b.bookingCode,
               booking: { ...b, paymentStatus: 'Paid' },
             }
           : prev,
@@ -331,11 +417,17 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     try {
       await adminConfirmAndCheckIn(b, adminName, 'Gate Pay + Entry');
       playGateTone('success', soundEnabled);
+      const tierLabel = getTierCopy(b.tier, lang).name;
       setScanResult({
-        kind: 'success',
-        message: isAr
-          ? `تم تأكيد الدفع والدخول · ${b.customerName} (${b.bookingCode})`
-          : `PAID & CHECKED IN · ${b.customerName} (${b.bookingCode})`,
+        status: 'valid_ready',
+        isValid: true,
+        tone: 'success',
+        verdictBadge: isAr ? 'تذكرة صالحة — تم الدفع والدخول' : 'VALID — PAID & CHECKED IN',
+        headline: `${b.customerName} — ${b.quantity}x ${tierLabel}`,
+        reason: isAr
+          ? `تم تأكيد الدفع وتسجيل الدخول بنجاح للكود ${b.bookingCode} (${b.concertTitle}).`
+          : `Payment confirmed and entry approved for ${b.bookingCode} (${b.concertTitle}).`,
+        scannedCode: b.bookingCode,
         booking: { ...b, paymentStatus: 'Paid', checkedIn: true },
       });
       onNotify(
@@ -359,14 +451,25 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
       setScanResult((prev) =>
         prev?.booking?.bookingCode === b.bookingCode
           ? {
-              kind: nextCheckedIn ? 'success' : 'warn',
-              message: nextCheckedIn
+              status: nextCheckedIn ? 'valid_ready' : 'invalid_unpaid',
+              isValid: nextCheckedIn,
+              tone: nextCheckedIn ? 'success' : 'warn',
+              verdictBadge: nextCheckedIn
                 ? isAr
-                  ? `تمت الموافقة على الدخول · ${b.customerName} (${b.bookingCode})`
-                  : `ENTRY APPROVED · ${b.customerName} (${b.bookingCode})`
+                  ? 'تذكرة صالحة — دخول مسموح'
+                  : 'VALID TICKET — ENTRY APPROVED'
                 : isAr
-                  ? `تم التراجع عن تسجيل الدخول · ${b.customerName} (${b.bookingCode})`
-                  : `CHECK-IN REVERTED · ${b.customerName} (${b.bookingCode})`,
+                  ? 'تم التراجع عن الدخول'
+                  : 'CHECK-IN REVERTED',
+              headline: `${b.customerName} (${b.bookingCode})`,
+              reason: nextCheckedIn
+                ? isAr
+                  ? `تم تسجيل دخول التذكرة بنجاح (${b.concertTitle}).`
+                  : `Ticket marked as checked in (${b.concertTitle}).`
+                : isAr
+                  ? 'تم التراجع عن تسجيل دخول هذه التذكرة ويمكن مسحها مجدداً.'
+                  : 'Check-in status was reverted; this ticket can be scanned again.',
+              scannedCode: b.bookingCode,
               booking: { ...b, checkedIn: nextCheckedIn },
             }
           : prev,
@@ -404,119 +507,351 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Gate Scanner & Manual Verify */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Manual & PNG Scan Card */}
-        <div className="lg:col-span-7 bg-[#101218] border border-white/10 rounded-xl p-5 space-y-4">
+      {/* Top Gate Scanner Stage & Manual Verification */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+        {/* Enlarged Live Camera Scanner Stage */}
+        <div
+          className={`lg:col-span-7 bg-[#101218] rounded-xl p-4 sm:p-5 flex flex-col justify-between gap-4 border-2 transition-colors ${
+            scanResult
+              ? scanResult.tone === 'success'
+                ? 'border-emerald-500/80 shadow-[0_0_24px_rgba(16,185,129,0.18)]'
+                : scanResult.tone === 'warn'
+                  ? 'border-amber-400/80 shadow-[0_0_24px_rgba(251,191,36,0.16)]'
+                  : 'border-rose-500/85 shadow-[0_0_24px_rgba(244,63,94,0.22)]'
+              : 'border-white/10'
+          }`}
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-display font-bold text-lg text-white">{t.gateQrTitle}</h2>
               <p className="text-xs text-slate-400">{t.gateQrSubtitle}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setSoundEnabled((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/12 text-xs text-slate-300 hover:text-white"
-            >
-              {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-slate-500" />}
-              {soundEnabled ? t.soundOn : t.soundMuted}
-            </button>
-          </div>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void verifyCode(manualCode, 'Manual Desk');
-            }}
-            className="space-y-1.5"
-          >
-            <label htmlFor="checkin-manual-code" className="block text-xs font-medium text-slate-300">
-              {t.bookingCodeLabel}
-            </label>
-            <div className="flex flex-col sm:flex-row gap-2.5">
-              <input
-                id="checkin-manual-code"
-                type="text"
-                dir="ltr"
-                value={manualCode}
-                onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                className="flex-1 px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num uppercase focus:outline-none focus:border-white/50"
-              />
+            <div className="flex items-center gap-2">
               <button
-                type="submit"
-                className="px-5 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors whitespace-nowrap"
+                type="button"
+                onClick={() => setSoundEnabled((v) => !v)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/12 text-xs text-slate-300 hover:text-white"
               >
-                {t.verifyAndAdmit}
+                {soundEnabled ? (
+                  <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                )}
+                {soundEnabled ? t.soundOn : t.soundMuted}
+              </button>
+              <button
+                type="button"
+                onClick={cameraActive ? stopCamera : () => void startCamera()}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                  cameraActive
+                    ? 'border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200'
+                    : 'border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200'
+                }`}
+              >
+                {cameraActive ? (
+                  <CameraOff className="w-3.5 h-3.5" />
+                ) : (
+                  <Camera className="w-3.5 h-3.5" />
+                )}
+                {cameraActive ? t.stopCamera : t.openCamera}
               </button>
             </div>
-          </form>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              type="button"
-              onClick={cameraActive ? stopCamera : () => void startCamera()}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.08] text-xs font-semibold text-white"
-            >
-              {cameraActive ? <CameraOff className="w-3.5 h-3.5 text-rose-400" /> : <Camera className="w-3.5 h-3.5 text-emerald-400" />}
-              {cameraActive ? t.stopCamera : t.openCamera}
-            </button>
-
-            <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.08] text-xs font-semibold text-white cursor-pointer">
-              <ImageUp className="w-3.5 h-3.5 text-amber-300" />
-              {t.scanTicketPng}
-              <input type="file" accept="image/*" onChange={handleScanImageFile} className="sr-only" />
-            </label>
           </div>
 
-          {scanResult && (
-            <div
-              className={`p-3.5 rounded-lg border text-xs space-y-2.5 ${
-                scanResult.kind === 'success'
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-                  : scanResult.kind === 'warn'
-                    ? 'border-amber-400/40 bg-amber-400/10 text-amber-100'
-                    : 'border-rose-500/40 bg-rose-500/10 text-rose-200'
-              }`}
-            >
-              <p className="font-medium leading-relaxed">{scanResult.message}</p>
-              {canConfirmPayments &&
-                scanResult.booking &&
-                scanResult.booking.paymentStatus === 'Pending' && (
+          {/* Enlarged Viewfinder Container */}
+          <div className="relative w-full h-[340px] sm:h-[420px] lg:h-[450px] rounded-xl overflow-hidden bg-[#06070A] border border-white/12 flex flex-col items-center justify-center">
+            {/* Keep video mounted so Samsung Browser & iOS Safari preserve user-gesture playback */}
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              className={cameraActive ? 'w-full h-full object-cover' : 'hidden'}
+            />
+            {cameraActive ? (
+              <>
+                {/* Live Scanner Indicator */}
+                <div className="absolute top-3 start-3 inline-flex items-center gap-2 px-3 py-1 rounded-md bg-black/75 backdrop-blur-md border border-white/15 text-[11px] font-mono-num font-semibold text-emerald-300">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  {t.cameraLiveBadge}
+                </div>
+
+                {/* Targeting Reticle Frame */}
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
+                  <div
+                    className={`relative w-56 h-56 sm:w-64 sm:h-64 rounded-2xl border-2 transition-colors ${
+                      scanResult
+                        ? scanResult.tone === 'success'
+                          ? 'border-emerald-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]'
+                          : scanResult.tone === 'warn'
+                            ? 'border-amber-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]'
+                            : 'border-rose-500 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]'
+                        : 'border-white/60 shadow-[0_0_0_9999px_rgba(0,0,0,0.38)]'
+                    }`}
+                  >
+                    <span className="absolute -top-0.5 -start-0.5 w-6 h-6 border-t-4 border-s-4 border-white rounded-tl-xl" />
+                    <span className="absolute -top-0.5 -end-0.5 w-6 h-6 border-t-4 border-e-4 border-white rounded-tr-xl" />
+                    <span className="absolute -bottom-0.5 -start-0.5 w-6 h-6 border-b-4 border-s-4 border-white rounded-bl-xl" />
+                    <span className="absolute -bottom-0.5 -end-0.5 w-6 h-6 border-b-4 border-e-4 border-white rounded-br-xl" />
+                  </div>
+                </div>
+
+                {/* Bottom Hint or Instant Color-Coded Verdict Strip */}
+                <div className="absolute bottom-3 inset-x-3 flex justify-center">
+                  {scanResult ? (
+                    <p
+                      className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wider rtl:tracking-normal shadow-xl border ${
+                        scanResult.tone === 'success'
+                          ? 'bg-emerald-500 text-[#04140D] border-emerald-200'
+                          : scanResult.tone === 'warn'
+                            ? 'bg-amber-400 text-[#1A1202] border-amber-200'
+                            : 'bg-rose-600 text-white border-rose-300'
+                      }`}
+                    >
+                      {scanResult.verdictBadge}
+                    </p>
+                  ) : (
+                    <p className="px-3.5 py-1.5 rounded-lg bg-black/80 backdrop-blur-md border border-white/15 text-xs font-medium text-emerald-300">
+                      {t.pointCameraHint}
+                    </p>
+                  )}
+                </div>
+              </>
+            ) : cameraError ? (
+              <div className="text-center space-y-4 px-6 max-w-md">
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-400/35 flex items-center justify-center mx-auto">
+                  <AlertTriangle className="w-7 h-7 text-amber-300" />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="font-display font-bold text-base text-white">
+                    {cameraError.title}
+                  </p>
+                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                    {cameraError.detail}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                  {cameraError.canRetry && (
+                    <button
+                      type="button"
+                      onClick={() => void startCamera()}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      {t.retryCamera}
+                    </button>
+                  )}
+                  <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-[#04140D] cursor-pointer transition-colors">
+                    <Camera className="w-4 h-4" />
+                    {t.snapQrCamera}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleScanImageFile}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center space-y-4 px-6 max-w-md">
+                <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center mx-auto">
+                  <Camera className="w-8 h-8 text-emerald-400" />
+                </div>
+                <p className="text-sm text-slate-300 leading-relaxed">{t.cameraIdleHint}</p>
+                <div className="flex flex-wrap items-center justify-center gap-2.5">
                   <button
                     type="button"
-                    disabled={busyCode === scanResult.booking.bookingCode}
-                    onClick={() => void handleQuickApprove(scanResult.booking!)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
+                    onClick={() => void startCamera()}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {t.confirmPayAndApprove}
+                    <Camera className="w-4 h-4" />
+                    {t.openCamera}
                   </button>
-                )}
-            </div>
-          )}
+                  <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-xs font-semibold text-emerald-200 cursor-pointer transition-colors">
+                    <Camera className="w-4 h-4" />
+                    {t.snapQrCamera}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleScanImageFile}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+            <canvas ref={canvasRef} className="hidden" />
+          </div>
         </div>
 
-        {/* Camera Viewport */}
-        <div className="lg:col-span-5 bg-[#101218] border border-white/10 rounded-xl p-5 flex flex-col justify-center items-center min-h-[210px]">
-          {cameraActive ? (
-            <div className="w-full space-y-2">
-              <video
-                ref={videoRef}
-                muted
-                playsInline
-                className="w-full h-48 object-cover rounded-lg bg-black border border-emerald-500/40"
-              />
-              <p className="text-[11px] text-center text-emerald-400 font-mono-num">
-                {t.pointCameraHint}
+        {/* Right Panel: Prominent VALID / INVALID Verdict + Manual & PNG Verification */}
+        <div className="lg:col-span-5 flex flex-col gap-4">
+          {/* Unmistakable High-Contrast Scan Verdict Banner */}
+          {scanResult && (
+            <div
+              role="status"
+              aria-live="assertive"
+              className={`rounded-xl border-2 p-5 space-y-3.5 ${
+                scanResult.tone === 'success'
+                  ? 'border-emerald-400 bg-emerald-950/70 text-emerald-50'
+                  : scanResult.tone === 'warn'
+                    ? 'border-amber-400 bg-amber-950/65 text-amber-50'
+                    : 'border-rose-500 bg-rose-950/75 text-rose-50'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+                      scanResult.tone === 'success'
+                        ? 'bg-emerald-500/25 text-emerald-300'
+                        : scanResult.tone === 'warn'
+                          ? 'bg-amber-400/25 text-amber-300'
+                          : 'bg-rose-500/25 text-rose-300'
+                    }`}
+                  >
+                    {scanResult.tone === 'success' ? (
+                      <CheckCircle2 className="w-7 h-7" />
+                    ) : scanResult.tone === 'warn' ? (
+                      <AlertTriangle className="w-7 h-7" />
+                    ) : scanResult.status === 'invalid_wrong_qr' ? (
+                      <ShieldAlert className="w-7 h-7" />
+                    ) : (
+                      <XCircle className="w-7 h-7" />
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <span
+                      className={`inline-block text-[11px] font-mono-num font-extrabold uppercase tracking-wider rtl:tracking-normal px-2.5 py-0.5 rounded ${
+                        scanResult.tone === 'success'
+                          ? 'bg-emerald-500 text-[#04140D]'
+                          : scanResult.tone === 'warn'
+                            ? 'bg-amber-400 text-[#1A1202]'
+                            : 'bg-rose-500 text-white'
+                      }`}
+                    >
+                      {scanResult.verdictBadge}
+                    </span>
+                    <h3 className="font-display font-bold text-base sm:text-lg leading-snug text-white">
+                      {scanResult.headline}
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetScanForNext}
+                  aria-label={t.scanNextBtn}
+                  className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Detailed Reason Explanation */}
+              <p className="text-xs sm:text-sm leading-relaxed text-white/90">
+                {scanResult.reason}
               </p>
-            </div>
-          ) : (
-            <div className="text-center space-y-2 text-slate-500">
-              <Camera className="w-8 h-8 mx-auto opacity-60" />
-              <p className="text-xs">{t.cameraIdleHint}</p>
+
+              {/* Ticket / Scanned Code Metadata Box */}
+              {scanResult.booking ? (
+                <div className="grid grid-cols-2 gap-2.5 pt-2.5 border-t border-white/15 text-xs">
+                  <div>
+                    <span className="text-white/60 block text-[11px]">{t.colCode}</span>
+                    <span className="font-mono-num font-bold text-white" dir="ltr">
+                      {scanResult.booking.bookingCode}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-white/60 block text-[11px]">{t.colConcertTier}</span>
+                    <span className="font-semibold text-white">
+                      {scanResult.booking.quantity}x {getTierCopy(scanResult.booking.tier, lang).name}
+                    </span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-white/60 block text-[11px]">{t.colConcert}</span>
+                    <span className="font-medium text-white">{scanResult.booking.concertTitle}</span>
+                  </div>
+                </div>
+              ) : (
+                scanResult.scannedCode && (
+                  <div className="pt-2.5 border-t border-white/15 text-xs">
+                    <span className="text-white/60 block text-[11px]">{t.scannedCodeLabel}</span>
+                    <span className="font-mono-num text-white break-all" dir="ltr">
+                      {scanResult.scannedCode}
+                    </span>
+                  </div>
+                )
+              )}
+
+              {/* Action Row */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {canConfirmPayments &&
+                  scanResult.booking &&
+                  scanResult.booking.paymentStatus === 'Pending' && (
+                    <button
+                      type="button"
+                      disabled={busyCode === scanResult.booking.bookingCode}
+                      onClick={() => void handleQuickApprove(scanResult.booking!)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-[#04140D] transition-colors"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      {t.confirmPayAndApprove}
+                    </button>
+                  )}
+                <button
+                  type="button"
+                  onClick={resetScanForNext}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-semibold text-white transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  {t.scanNextBtn}
+                </button>
+              </div>
             </div>
           )}
-          <canvas ref={canvasRef} className="hidden" />
+
+          {/* Manual Code & PNG Upload Card */}
+          <div className="bg-[#101218] border border-white/10 rounded-xl p-5 space-y-4 flex-1 flex flex-col justify-center">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void verifyCode(manualCode, 'Manual Desk');
+              }}
+              className="space-y-2"
+            >
+              <label htmlFor="checkin-manual-code" className="block text-xs font-medium text-slate-300">
+                {t.bookingCodeLabel}
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                <input
+                  id="checkin-manual-code"
+                  type="text"
+                  dir="ltr"
+                  value={manualCode}
+                  onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                  placeholder="GZ-XXXXXX"
+                  className="flex-1 px-3.5 py-2.5 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num uppercase focus:outline-none focus:border-white/50"
+                />
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors whitespace-nowrap"
+                >
+                  {t.verifyAndAdmit}
+                </button>
+              </div>
+            </form>
+
+            <div className="pt-2 border-t border-white/8 flex flex-wrap items-center gap-2.5">
+              <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.08] text-xs font-semibold text-white cursor-pointer w-full sm:w-auto justify-center">
+                <ImageUp className="w-4 h-4 text-amber-300" />
+                {t.scanTicketPng}
+                <input type="file" accept="image/*" onChange={handleScanImageFile} className="sr-only" />
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -595,7 +930,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
                       <p className="text-slate-200">{b.concertTitle}</p>
                       <p className="text-[11px] text-slate-400">
                         {b.quantity}x {getTierCopy(b.tier, lang).name} ·{' '}
-                        <span className="font-mono-num">{formatCurrencyEgp(b.totalEgp, lang)}</span>
+                        <span className="font-modern-price font-semibold text-slate-200">{formatCurrencyEgp(b.totalEgp, lang)}</span>
                       </p>
                     </td>
                     <td className="px-4 py-3">

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  CalendarPlus,
   CheckCircle2,
   Copy,
   Download,
@@ -14,8 +13,8 @@ import type { User } from 'firebase/auth';
 import { cancelPendingBooking } from '../services/firestoreService';
 import { formatFriendlyFirebaseError } from '../firebase';
 import type { Booking, Concert } from '../types';
-import { buildCalendarIcs, getTierColorHex, isPendingEmailVerification, isVerifiedFanAccount } from '../utils/bookingLogic';
-import { copyTextToClipboard, generateQrDataUrl, renderTicketPassPng, triggerFileDownload } from '../utils/passExport';
+import { getTierColorHex, isPendingEmailVerification, isVerifiedFanAccount } from '../utils/bookingLogic';
+import { copyTextToClipboard, generateQrDataUrl, renderTicketPassPng } from '../utils/passExport';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
   formatCurrencyEgp,
@@ -113,13 +112,6 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
     } finally {
       setGeneratingPngCode(null);
     }
-  };
-
-  const handleDownloadIcs = (booking: Booking) => {
-    const show = concerts.find((c) => c.id === booking.concertId);
-    const ics = buildCalendarIcs(booking, show);
-    triggerFileDownload(`${booking.bookingCode}-genz-events.ics`, ics, 'text/calendar;charset=utf-8');
-    onNotify(t.calendarDownloaded);
   };
 
   const buildWhatsAppHref = (booking: Booking) => {
@@ -299,7 +291,7 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
                       </div>
                       <div>
                         <span className="text-slate-500 block">{t.totalLabel}</span>
-                        <span className="font-mono-num font-semibold text-white">
+                        <span className="font-modern-price font-semibold tracking-tight rtl:tracking-normal text-white">
                           {formatCurrencyEgp(b.totalEgp, lang)}
                         </span>
                       </div>
@@ -347,28 +339,25 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
                       <Download className="w-3.5 h-3.5" />
                       {generatingPngCode === b.bookingCode ? t.ePassGenerating : t.ePassPng}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadIcs(b)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/12 bg-white/[0.04] hover:bg-white/[0.08] text-xs font-medium text-white"
-                    >
-                      <CalendarPlus className="w-3.5 h-3.5" />
-                      {t.icsLabel}
-                    </button>
-                    <a
-                      href={buildWhatsAppHref(b)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={`${t.whatsappReceiptAria} (${b.bookingCode})`}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-colors ${
-                        isPaid
-                          ? 'border-white/12 bg-white/[0.04] hover:bg-white/[0.08] font-medium text-white'
-                          : 'border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 font-semibold text-emerald-200'
-                      }`}
-                    >
-                      <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                      {isPaid ? t.whatsappLabel : t.sendReceiptWhatsapp}
-                    </a>
+                    <div className="inline-flex flex-wrap items-center gap-2">
+                      <a
+                        href={buildWhatsAppHref(b)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`${t.whatsappReceiptAria} (${b.bookingCode})`}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs no-underline transition-colors shrink-0 ${
+                          isPaid
+                            ? 'border-white/12 bg-white/[0.04] hover:bg-white/[0.08] font-medium text-white'
+                            : 'border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 font-semibold text-emerald-200'
+                        }`}
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                        {isPaid ? t.whatsappLabel : t.sendReceiptWhatsapp}
+                      </a>
+                      <span className="text-[11px] leading-snug text-emerald-300/90">
+                        {t.whatsappPaymentScreenshotNote}
+                      </span>
+                    </div>
 
                     {!isPaid && !b.checkedIn && (
                       confirmCancelCode === b.bookingCode ? (

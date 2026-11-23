@@ -101,7 +101,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
                   {t.onlineSalesLabel}
                 </p>
-                <p className="font-mono-num text-lg font-bold text-white mt-1">
+                <p className="font-modern-price text-lg font-bold tracking-tight rtl:tracking-normal text-white mt-1">
                   {formatCurrencyEgp(channelBreakdown.onlineRevenue, lang)}
                 </p>
               </div>
@@ -117,7 +117,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
                   {t.offlineSalesLabel}
                 </p>
-                <p className="font-mono-num text-lg font-bold text-white mt-1">
+                <p className="font-modern-price text-lg font-bold tracking-tight rtl:tracking-normal text-white mt-1">
                   {formatCurrencyEgp(channelBreakdown.offlineRevenue, lang)}
                 </p>
               </div>
@@ -136,7 +136,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="lg:col-span-5 bg-[#101218] border border-white/10 rounded-xl p-5 flex flex-col">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-white">{t.paidRevenueByTier}</h3>
-                <span className="font-mono-num text-xs text-slate-400">
+                <span className="font-modern-price text-xs font-semibold text-slate-400">
                   {formatCurrencyEgp(totalTierRevenue, lang)}
                 </span>
               </div>
@@ -185,7 +185,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
                   {item.name}
                 </span>
-                <span className="font-mono-num text-white">{item.value.toLocaleString()}</span>
+                <span className="font-modern-price font-semibold text-white">{item.value.toLocaleString()}</span>
               </div>
             ))}
           </div>

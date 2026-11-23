@@ -132,8 +132,16 @@ test('camera access is strictly isolated to verified staff and never requested u
   };
   assert.equal(
     (metadata.requestFramePermissions || []).includes('camera'),
-    false,
-    'metadata.json must not request upfront camera permission from public visitors',
+    true,
+    'metadata.json must allow camera iframe permission so verified staff can use Gate QR Check-In',
+  );
+
+  // AdminCheckin must strictly guard camera startup behind verified staff state
+  const adminCheckinPath = path.join(process.cwd(), 'src', 'components', 'admin', 'AdminCheckin.tsx');
+  const adminCheckinSrc = fs.readFileSync(adminCheckinPath, 'utf8');
+  assert.ok(
+    adminCheckinSrc.includes('if (!isVerifiedStaff) return;'),
+    'AdminCheckin startCamera must require verified staff',
   );
 
   // Recursively scan every non-admin source file to confirm zero getUserMedia/mediaDevices usage

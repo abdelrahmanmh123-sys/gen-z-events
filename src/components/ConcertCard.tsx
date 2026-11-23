@@ -1,16 +1,18 @@
-import React from 'react';
-import { Calendar, Heart, MapPin, Share2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Calendar, Check, Heart, MapPin, Share2 } from 'lucide-react';
 import { HERO_IMAGE_PATH } from '../data/defaults';
 import { useLanguage } from '../i18n/LanguageContext';
 import { formatCurrencyEgp, getGenreLabel } from '../i18n/translations';
 import type { Concert } from '../types';
 import { getTierUnitPrice } from '../utils/bookingLogic';
+import { shareConcertDetails } from '../utils/shareConcert';
 
 interface ConcertCardProps {
   concert: Concert;
   isFavorite: boolean;
   onToggleFavorite: (concertId: string) => void;
   onBook: (concert: Concert) => void;
+  onNotify?: (message: string) => void;
 }
 
 const STAGE_MOODS: Record<string, { tint: string; objectPos: string }> = {
@@ -45,18 +47,38 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
   isFavorite,
   onToggleFavorite,
   onBook,
+  onNotify,
 }) => {
-  const { lang, isAr, t } = useLanguage();
+  const { lang, t } = useLanguage();
+  const [shareFeedback, setShareFeedback] = useState<'idle' | 'copied'>('idle');
+  const feedbackTimerRef = useRef<number | null>(null);
   const soldOut = concert.seatsLeft <= 0;
   const startingPrice = getTierUnitPrice(concert, 'Silver');
   const mood = STAGE_MOODS[concert.genre] || STAGE_MOODS['Indie Pop / Rap'];
   const compactDate = concert.date.replace(/,\s*\d{4}$/, '');
 
-  const shareText = isAr
-    ? `${concert.title} — ${concert.artist}\n${concert.date} الساعة ${concert.time}\nالمكان: ${concert.venue}، قنا\nالتذاكر تبدأ من ${formatCurrencyEgp(startingPrice, 'ar')} عبر Gen Z Events`
-    : `${concert.title} — ${concert.artist}\n${concert.date} at ${concert.time}\nVenue: ${concert.venue}, Qena\nPasses from ${startingPrice.toLocaleString()} EGP on Gen Z Events`;
+  useEffect(() => {
+    return () => {
+      if (feedbackTimerRef.current) {
+        window.clearTimeout(feedbackTimerRef.current);
+      }
+    };
+  }, []);
 
-  const whatsappShareHref = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+  const handleShare = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const outcome = await shareConcertDetails(concert, { lang });
+    if (outcome === 'shared') {
+      onNotify?.(t.toastEventShared);
+    } else if (outcome === 'copied') {
+      setShareFeedback('copied');
+      if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = window.setTimeout(() => setShareFeedback('idle'), 2000);
+      onNotify?.(t.toastEventCopied);
+    } else if (outcome === 'failed') {
+      onNotify?.(t.toastEventShareFailed);
+    }
+  };
 
   return (
     <article className="group flex flex-col bg-[#101218] border border-white/10 hover:border-white/25 rounded-xl overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
@@ -81,7 +103,7 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
               onToggleFavorite(concert.id);
             }}
             aria-label={`${isFavorite ? t.removeFavAria : t.saveFavAria}: ${concert.title}`}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center backdrop-blur-md border transition-colors ${
+            className={`w-8 h-8 rounded-lg flex items-center justify-center backdrop-blur-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
               isFavorite
                 ? 'bg-white border-white text-[#08090C]'
                 : 'bg-black/55 border-white/15 text-slate-200 hover:bg-black/80'
@@ -89,16 +111,23 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
           >
             <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} />
           </button>
-          <a
-            href={whatsappShareHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            aria-label={`${t.shareWhatsappAria}: ${concert.title}`}
-            className="w-8 h-8 rounded-lg flex items-center justify-center backdrop-blur-md bg-black/55 border border-white/15 text-slate-200 hover:bg-black/80 transition-colors"
+          <button
+            type="button"
+            onClick={(e) => void handleShare(e)}
+            aria-label={`${t.shareEventAria}: ${concert.title}`}
+            className={`h-8 px-2.5 rounded-lg inline-flex items-center gap-1.5 backdrop-blur-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
+              shareFeedback === 'copied'
+                ? 'bg-emerald-500/25 border-emerald-400/50 text-emerald-200'
+                : 'bg-black/60 border-white/15 text-slate-100 hover:bg-black/85'
+            }`}
           >
-            <Share2 className="w-3.5 h-3.5" />
-          </a>
+            {shareFeedback === 'copied' ? (
+              <Check className="w-3.5 h-3.5 text-emerald-300" />
+            ) : (
+              <Share2 className="w-3.5 h-3.5" />
+            )}
+            <span>{shareFeedback === 'copied' ? t.shareCopiedLabel : t.shareLabel}</span>
+          </button>
         </div>
 
         {/* Clean Sold Out Status Tag Only */}
@@ -148,7 +177,7 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
             <p className="text-[10px] uppercase tracking-wider rtl:tracking-normal text-slate-500 font-semibold">
               {t.startingFrom}
             </p>
-            <p className="font-mono-num text-base font-bold text-white">
+            <p className="font-modern-price text-base font-bold tracking-tight rtl:tracking-normal text-white">
               {formatCurrencyEgp(startingPrice, lang)}
             </p>
           </div>
