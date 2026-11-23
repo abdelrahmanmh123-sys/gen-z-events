@@ -32,7 +32,7 @@ import {
   subscribeFormsAuthChange,
 } from '../../services/googleFormsService';
 import type { Concert, PaymentStatus } from '../../types';
-import { getTierColorHex } from '../../utils/bookingLogic';
+import { getTierColorHex, isSafeHttpsUrl } from '../../utils/bookingLogic';
 import {
   autoMapFormQuestions,
   DEFAULT_OFFLINE_FORM_EDIT_URL,
@@ -55,6 +55,7 @@ interface GoogleFormSyncPanelProps {
   existingCodes: Set<string>;
   adminName: string;
   adminEmail: string;
+  canViewRevenueAnalytics: boolean;
   onNotify: (msg: string) => void;
 }
 
@@ -84,6 +85,7 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
   existingCodes,
   adminName,
   adminEmail,
+  canViewRevenueAnalytics,
   onNotify,
 }) => {
   const { lang, isAr } = useLanguage();
@@ -123,7 +125,9 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
   const activeFormId = parsedFormRef.formId;
 
   const openFormUrl = useMemo(() => {
-    if (formSchema?.responderUri) return formSchema.responderUri;
+    if (formSchema?.responderUri && isSafeHttpsUrl(formSchema.responderUri)) {
+      return formSchema.responderUri;
+    }
     if (activeFormId === DEFAULT_OFFLINE_FORM_ID) return DEFAULT_OFFLINE_FORM_PUBLIC_URL;
     if (activeFormId) return `https://docs.google.com/forms/d/${encodeURIComponent(activeFormId)}/viewform`;
     return DEFAULT_OFFLINE_FORM_PUBLIC_URL;
@@ -298,10 +302,19 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
         syncResult.newBookings,
         deductSeats,
       );
+      const dupSuffix =
+        res.skippedDuplicateCount > 0
+          ? isAr
+            ? ` (تم تخطي ${res.skippedDuplicateCount} متزامن مسبقاً)`
+            : ` (${res.skippedDuplicateCount} already synced)`
+          : '';
+      const revPart = canViewRevenueAnalytics
+        ? ` · ${formatCurrencyEgp(syncResult.newRevenueEgp, lang)}`
+        : '';
       onNotify(
         isAr
-          ? `تم استيراد ${res.importedCount} تذكرة جديدة من Google Form (${syncResult.newTicketsCount.toLocaleString()} تذكرة · ${formatCurrencyEgp(syncResult.newRevenueEgp, lang)}).`
-          : `Imported ${res.importedCount} new Google Form ticket(s) (${syncResult.newTicketsCount.toLocaleString()} passes · ${formatCurrencyEgp(syncResult.newRevenueEgp, lang)}).`,
+          ? `تم استيراد ${res.importedCount} تذكرة جديدة من Google Form (${syncResult.newTicketsCount.toLocaleString()} تذكرة${revPart})${dupSuffix}.`
+          : `Imported ${res.importedCount} new Google Form ticket(s) (${syncResult.newTicketsCount.toLocaleString()} passes${revPart})${dupSuffix}.`,
       );
     } catch (err: unknown) {
       const friendly = localizeKnownMessage(formatFriendlyFirebaseError(err), lang);
@@ -697,8 +710,8 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
       {/* Sync Results Summary & Preview Table */}
       {formSchema && syncResult && activeConcert && (
         <div className="space-y-3 pt-1">
-          {/* Live Form Identity + 4 Precision Stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+          {/* Live Form Identity + Precision Stats */}
+          <div className={`grid grid-cols-2 ${canViewRevenueAnalytics ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-2.5`}>
             <div className="rounded-lg bg-[#08090C] border border-white/10 px-3.5 py-2.5">
               <p className="text-[10px] uppercase tracking-wider rtl:tracking-normal text-slate-500 font-semibold">
                 {isAr ? 'إجمالي ردود الفورم' : 'Total Responses'}
@@ -723,14 +736,16 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
                 {syncResult.alreadySyncedCount.toLocaleString()}
               </p>
             </div>
-            <div className="rounded-lg bg-[#08090C] border border-white/10 px-3.5 py-2.5">
-              <p className="text-[10px] uppercase tracking-wider rtl:tracking-normal text-slate-500 font-semibold">
-                {isAr ? 'إيرادات الردود الجديدة' : 'New Revenue'}
-              </p>
-              <p className="font-modern-price text-base font-bold tracking-tight rtl:tracking-normal text-white mt-0.5">
-                {formatCurrencyEgp(syncResult.newRevenueEgp, lang)}
-              </p>
-            </div>
+            {canViewRevenueAnalytics && (
+              <div className="rounded-lg bg-[#08090C] border border-white/10 px-3.5 py-2.5">
+                <p className="text-[10px] uppercase tracking-wider rtl:tracking-normal text-slate-500 font-semibold">
+                  {isAr ? 'إيرادات الردود الجديدة' : 'New Revenue'}
+                </p>
+                <p className="font-modern-price text-base font-bold tracking-tight rtl:tracking-normal text-white mt-0.5">
+                  {formatCurrencyEgp(syncResult.newRevenueEgp, lang)}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Skipped Rows Diagnostics */}

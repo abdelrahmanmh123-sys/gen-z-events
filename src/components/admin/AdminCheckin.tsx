@@ -149,15 +149,41 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
       onNotify(isAr ? `تم تسجيل دخول ${found.bookingCode}.` : `Checked in ${found.bookingCode}.`);
     } catch (err) {
       playGateTone('error', soundEnabled);
-      setScanResult({
-        status: 'invalid_not_found',
-        isValid: false,
-        tone: 'error',
-        verdictBadge: isAr ? 'خطأ في التحقق' : 'VERIFICATION ERROR',
-        headline: isAr ? 'تعذر إتمام تسجيل الدخول' : 'Check-In Failed',
-        reason: localizeKnownMessage(formatFriendlyFirebaseError(err), lang),
-        scannedCode: found.bookingCode,
-      });
+      const rawMsg = err instanceof Error ? err.message : '';
+      if (rawMsg.startsWith('ALREADY_CHECKED_IN|')) {
+        const [, checkedAt, byStaff] = rawMsg.split('|');
+        const detailParts = [
+          checkedAt ? (isAr ? `الساعة ${checkedAt}` : `at ${checkedAt}`) : '',
+          byStaff ? (isAr ? `بواسطة ${byStaff}` : `by ${byStaff}`) : '',
+        ].filter(Boolean);
+        setScanResult({
+          status: 'invalid_already_used',
+          isValid: false,
+          tone: 'error',
+          verdictBadge: isAr ? 'مرفوض — تذكرة مستخدمة بالفعل' : 'INVALID — ALREADY CHECKED IN',
+          headline: `${found.customerName} (${found.bookingCode})`,
+          reason: isAr
+            ? `تم تسجيل دخول هذه التذكرة للتو على بوابة أخرى${detailParts.length ? ` (${detailParts.join(' · ')})` : ''}. لا تسمح بالدخول.`
+            : `This pass was just admitted on another scanner${detailParts.length ? ` (${detailParts.join(' · ')})` : ''}. Do not admit.`,
+          scannedCode: found.bookingCode,
+          booking: { ...found, checkedIn: true, checkedInAt: checkedAt || found.checkedInAt },
+        });
+      } else {
+        setScanResult({
+          status: 'invalid_not_found',
+          isValid: false,
+          tone: 'error',
+          verdictBadge: isAr ? 'خطأ في التحقق' : 'VERIFICATION ERROR',
+          headline: isAr ? 'تعذر إتمام تسجيل الدخول' : 'Check-In Failed',
+          reason:
+            rawMsg === 'PAYMENT_NOT_PAID'
+              ? isAr
+                ? 'هذه التذكرة لم يتم تأكيد دفعها بعد.'
+                : 'This ticket has not been confirmed as paid yet.'
+              : localizeKnownMessage(formatFriendlyFirebaseError(err), lang),
+          scannedCode: found.bookingCode,
+        });
+      }
     } finally {
       verifyingRef.current = false;
     }
@@ -484,7 +510,17 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
             : `Checked in ${b.bookingCode}.`,
       );
     } catch (err) {
-      onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
+      const rawMsg = err instanceof Error ? err.message : '';
+      if (rawMsg.startsWith('ALREADY_CHECKED_IN|')) {
+        playGateTone('error', soundEnabled);
+        onNotify(
+          isAr
+            ? `التذكرة ${b.bookingCode} تم تسجيل دخولها بالفعل على جهاز آخر.`
+            : `Ticket ${b.bookingCode} was already checked in on another device.`,
+        );
+      } else {
+        onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
+      }
     } finally {
       setBusyCode(null);
     }

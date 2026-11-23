@@ -69,6 +69,14 @@ export const AdminTeam: React.FC<AdminTeamProps> = ({
       );
       return;
     }
+    if (member.email.toLowerCase() === currentAdminEmail.trim().toLowerCase()) {
+      onNotify(
+        isAr
+          ? 'لا يمكنك إزالة حسابك النشط حالياً.'
+          : 'You cannot revoke your own currently active admin account.',
+      );
+      return;
+    }
     try {
       await adminRemoveMember(member.id);
       onNotify(

@@ -28,7 +28,7 @@ export const AdminContentPromos: React.FC<AdminContentPromosProps> = ({
 
   const handleSavePromo = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanCode = promoCode.trim().toUpperCase().replace(/[^A-Z0-9_\-]/g, '');
+    const cleanCode = promoCode.trim().toUpperCase().replace(/[^A-Z0-9_\-]/g, '').slice(0, 32);
     if (cleanCode.length < 2) {
       onNotify(
         isAr

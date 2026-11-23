@@ -28,9 +28,10 @@ export async function upsertUserProfile(
 ): Promise<void> {
   const path = `users/${uid}`;
   const ref = doc(db, 'users', uid);
+  const cleanDisplayName = payload.displayName.trim().slice(0, 100);
   const sanitized = {
     uid,
-    displayName: payload.displayName.trim().slice(0, 100) || 'Gen Z Fan',
+    displayName: cleanDisplayName.length >= 2 ? cleanDisplayName : 'Gen Z Fan',
     email: payload.email.trim().slice(0, 120),
     mobile: payload.mobile.trim().slice(0, 30),
     city: payload.city.trim().slice(0, 60),
@@ -133,18 +134,49 @@ export async function adminToggleCheckIn(
   method: string,
 ): Promise<void> {
   const path = `bookings/${booking.bookingCode}`;
+  const bookingRef = doc(db, 'bookings', booking.bookingCode);
   const timeStamp = nextCheckedIn
     ? new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : '';
   try {
-    await updateDoc(doc(db, 'bookings', booking.bookingCode), {
-      checkedIn: nextCheckedIn,
-      checkedInAt: timeStamp,
-      approvedBy: nextCheckedIn ? approverName.slice(0, 100) : booking.approvedBy,
-      approvalMethod: nextCheckedIn ? method.slice(0, 40) : booking.approvalMethod,
-      updatedAt: serverTimestamp(),
-    });
+    if (nextCheckedIn) {
+      // Atomic transaction guarantees two entrance scanners can never admit the same pass twice
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(bookingRef);
+        if (!snap.exists()) {
+          throw new Error('Booking no longer exists.');
+        }
+        const fresh = snap.data() as Booking;
+        if (fresh.paymentStatus !== 'Paid') {
+          throw new Error('PAYMENT_NOT_PAID');
+        }
+        if (fresh.checkedIn) {
+          throw new Error(`ALREADY_CHECKED_IN|${fresh.checkedInAt || ''}|${fresh.approvedBy || ''}`);
+        }
+        tx.update(bookingRef, {
+          checkedIn: true,
+          checkedInAt: timeStamp,
+          approvedBy: approverName.slice(0, 100),
+          approvalMethod: method.slice(0, 40),
+          updatedAt: serverTimestamp(),
+        });
+      });
+    } else {
+      await updateDoc(bookingRef, {
+        checkedIn: false,
+        checkedInAt: '',
+        approvedBy: booking.approvedBy,
+        approvalMethod: booking.approvalMethod,
+        updatedAt: serverTimestamp(),
+      });
+    }
   } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.startsWith('ALREADY_CHECKED_IN|') || error.message === 'PAYMENT_NOT_PAID')
+    ) {
+      throw error;
+    }
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
@@ -249,14 +281,46 @@ export async function adminBulkImportOfflineBookings(
   concertId: string,
   bookings: Omit<Booking, 'createdAt' | 'updatedAt'>[],
   deductSeats: boolean,
-): Promise<{ importedCount: number; deductedTickets: number }> {
+): Promise<{ importedCount: number; skippedDuplicateCount: number; deductedTickets: number }> {
   if (bookings.length === 0) {
-    return { importedCount: 0, deductedTickets: 0 };
+    return { importedCount: 0, skippedDuplicateCount: 0, deductedTickets: 0 };
   }
-  const CHUNK_SIZE = 400;
+  const EXISTENCE_CHECK_CHUNK = 25;
+  const WRITE_CHUNK_SIZE = 400;
   try {
-    for (let i = 0; i < bookings.length; i += CHUNK_SIZE) {
-      const chunk = bookings.slice(i, i + CHUNK_SIZE);
+    // Verify server-side which bookingCodes do not already exist so concurrent imports stay idempotent
+    const freshBookings: Omit<Booking, 'createdAt' | 'updatedAt'>[] = [];
+    const seenInBatch = new Set<string>();
+    let skippedDuplicateCount = 0;
+
+    for (let i = 0; i < bookings.length; i += EXISTENCE_CHECK_CHUNK) {
+      const slice = bookings.slice(i, i + EXISTENCE_CHECK_CHUNK);
+      const checks = await Promise.all(
+        slice.map(async (item) => {
+          const codeKey = item.bookingCode.toUpperCase();
+          if (seenInBatch.has(codeKey)) {
+            return { item, exists: true };
+          }
+          seenInBatch.add(codeKey);
+          const snap = await getDoc(doc(db, 'bookings', item.bookingCode));
+          return { item, exists: snap.exists() };
+        }),
+      );
+      for (const entry of checks) {
+        if (entry.exists) {
+          skippedDuplicateCount += 1;
+        } else {
+          freshBookings.push(entry.item);
+        }
+      }
+    }
+
+    if (freshBookings.length === 0) {
+      return { importedCount: 0, skippedDuplicateCount, deductedTickets: 0 };
+    }
+
+    for (let i = 0; i < freshBookings.length; i += WRITE_CHUNK_SIZE) {
+      const chunk = freshBookings.slice(i, i + WRITE_CHUNK_SIZE);
       const batch = writeBatch(db);
       for (const item of chunk) {
         batch.set(doc(db, 'bookings', item.bookingCode), {
@@ -268,7 +332,7 @@ export async function adminBulkImportOfflineBookings(
       await batch.commit();
     }
 
-    const totalPaidQty = bookings
+    const totalPaidQty = freshBookings
       .filter((b) => b.paymentStatus === 'Paid')
       .reduce((sum, b) => sum + b.quantity, 0);
 
@@ -288,7 +352,7 @@ export async function adminBulkImportOfflineBookings(
       });
     }
 
-    return { importedCount: bookings.length, deductedTickets };
+    return { importedCount: freshBookings.length, skippedDuplicateCount, deductedTickets };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `bookings/offline-import/${concertId}`);
   }

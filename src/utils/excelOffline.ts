@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { Booking, Concert } from '../types';
-import { getTierUnitPrice } from './bookingLogic';
+import { getTierUnitPrice, sanitizeSpreadsheetCell } from './bookingLogic';
 
 export interface ParsedSpreadsheetFile {
   sheetName: string;
@@ -91,21 +91,21 @@ export function downloadOfflineTemplateXlsx(concert?: Concert): void {
 
 export function exportOfflineBookingsXlsx(bookings: Booking[], filename?: string): void {
   const exportRows = bookings.map((b) => ({
-    'Booking Code': b.bookingCode,
-    Concert: b.concertTitle,
-    Date: b.concertDate,
-    'Customer Name': b.customerName,
-    Mobile: b.customerMobile,
-    Email: b.customerEmail || '',
-    Tier: b.tier,
+    'Booking Code': sanitizeSpreadsheetCell(b.bookingCode),
+    Concert: sanitizeSpreadsheetCell(b.concertTitle),
+    Date: sanitizeSpreadsheetCell(b.concertDate),
+    'Customer Name': sanitizeSpreadsheetCell(b.customerName),
+    Mobile: sanitizeSpreadsheetCell(b.customerMobile),
+    Email: sanitizeSpreadsheetCell(b.customerEmail || ''),
+    Tier: sanitizeSpreadsheetCell(b.tier),
     Quantity: b.quantity,
     'Unit Price EGP': b.unitPrice,
     'Total EGP': b.totalEgp,
-    'Outlet / Ref': b.transferRef,
-    Status: b.paymentStatus,
+    'Outlet / Ref': sanitizeSpreadsheetCell(b.transferRef),
+    Status: sanitizeSpreadsheetCell(b.paymentStatus),
     'Checked In': b.checkedIn ? 'Yes' : 'No',
-    'Logged By': b.approvedBy || '',
-    Source: b.approvalMethod || 'Offline',
+    'Logged By': sanitizeSpreadsheetCell(b.approvedBy || ''),
+    Source: sanitizeSpreadsheetCell(b.approvalMethod || 'Offline'),
   }));
 
   const ws = XLSX.utils.json_to_sheet(exportRows);

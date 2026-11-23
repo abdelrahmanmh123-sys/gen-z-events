@@ -72,6 +72,17 @@ service cloud.firestore {
       return val is string && val.size() == 7 && val.matches('^#[0-9A-Fa-f]{6}$');
     }
 
+    function isValidPosterUrl(val) {
+      return val is string
+        && val.size() <= 400000
+        && (
+          val == ''
+          || val.matches('^https://.+')
+          || val.matches('^/assets/[a-zA-Z0-9_./\\-]+$')
+          || val.matches('^data:image/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$')
+        );
+    }
+
     function isValidTierColors(colors) {
       return colors is map
         && colors.keys().hasAll(['Silver', 'Gold', 'VIP', 'Lounge'])
@@ -80,6 +91,40 @@ service cloud.firestore {
         && isValidHexColor(colors.Gold)
         && isValidHexColor(colors.VIP)
         && isValidHexColor(colors.Lounge);
+    }
+
+    function isValidPromoDiscount(promo, tier, subtotal, discountEgp) {
+      let rawExpected = promo.type == 'percent'
+        ? math.round((subtotal * (promo.value > 90 ? 90 : promo.value)) / 100.0)
+        : math.round(promo.value);
+      let capped = rawExpected > subtotal ? subtotal : (rawExpected < 0 ? 0 : rawExpected);
+      return promo.active == true
+        && (promo.tiers.size() == 0 || tier in promo.tiers)
+        && discountEgp >= capped - 1
+        && discountEgp <= capped + 1;
+    }
+
+    function isValidFanPricing(data) {
+      let concert = get(/databases/$(database)/documents/concerts/$(data.concertId)).data;
+      let subtotal = concert.tierPrices[data.tier] * data.quantity;
+      return data.quantity <= concert.seatsLeft
+        && data.unitPrice == concert.tierPrices[data.tier]
+        && data.discountEgp >= 0
+        && data.discountEgp <= subtotal
+        && data.totalEgp == subtotal - data.discountEgp
+        && (
+          (data.promoCode == '' && data.discountEgp == 0) || (
+            data.promoCode != ''
+            && isValidId(data.promoCode)
+            && exists(/databases/$(database)/documents/promos/$(data.promoCode))
+            && isValidPromoDiscount(
+              get(/databases/$(database)/documents/promos/$(data.promoCode)).data,
+              data.tier,
+              subtotal,
+              data.discountEgp
+            )
+          )
+        );
     }
 
     // =========================================================================
@@ -122,7 +167,7 @@ service cloud.firestore {
         && data.totalSeats is int && data.totalSeats >= 1 && data.totalSeats <= 50000
         && data.seatsLeft is int && data.seatsLeft >= 0 && data.seatsLeft <= data.totalSeats
         && isValidString(data.description, 4, 800)
-        && isValidString(data.posterUrl, 0, 400000)
+        && isValidPosterUrl(data.posterUrl)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -326,7 +371,7 @@ service cloud.firestore {
         && (
           isSuperAdmin() || (
             isGateStaff()
-            && incoming().userId == 'offline_box_office'
+            && incoming().userId in ['offline-sale', 'offline_box_office']
             && incoming().paymentMethod == 'Offline'
             && incoming().paymentStatus in ['Paid', 'Pending']
           ) || (
@@ -339,6 +384,7 @@ service cloud.firestore {
             && incoming().checkedInAt == ''
             && incoming().approvedBy == ''
             && incoming().approvalMethod == ''
+            && isValidFanPricing(incoming())
           )
         );
       allow update: if isVerified()

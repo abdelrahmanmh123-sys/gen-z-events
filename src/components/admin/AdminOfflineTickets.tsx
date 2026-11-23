@@ -51,6 +51,7 @@ interface AdminOfflineTicketsProps {
   adminName: string;
   adminEmail: string;
   canDeleteBookings: boolean;
+  canViewRevenueAnalytics: boolean;
   onNotify: (msg: string) => void;
 }
 
@@ -60,6 +61,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
   adminName,
   adminEmail,
   canDeleteBookings,
+  canViewRevenueAnalytics,
   onNotify,
 }) => {
   const { lang, isAr, t } = useLanguage();
@@ -203,10 +205,19 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
         deductSeatsOnImport,
       );
       setRawImportFile(null);
+      const dupSuffix =
+        res.skippedDuplicateCount > 0
+          ? isAr
+            ? ` (تم تخطي ${res.skippedDuplicateCount} سجل مكرر)`
+            : ` (${res.skippedDuplicateCount} duplicate skipped)`
+          : '';
+      const revPart = canViewRevenueAnalytics
+        ? ` · ${formatCurrencyEgp(parsedImport.totalRevenueEgp, lang)}`
+        : '';
       onNotify(
         isAr
-          ? `تم استيراد ${res.importedCount} عملية أوفلاين (${parsedImport.totalTickets.toLocaleString()} تذكرة · ${formatCurrencyEgp(parsedImport.totalRevenueEgp, lang)}).`
-          : `Imported ${res.importedCount} offline sale(s) (${parsedImport.totalTickets.toLocaleString()} tickets · ${formatCurrencyEgp(parsedImport.totalRevenueEgp, lang)}).`,
+          ? `تم استيراد ${res.importedCount} عملية أوفلاين (${parsedImport.totalTickets.toLocaleString()} تذكرة${revPart})${dupSuffix}.`
+          : `Imported ${res.importedCount} offline sale(s) (${parsedImport.totalTickets.toLocaleString()} tickets${revPart})${dupSuffix}.`,
       );
     } catch (err) {
       onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
@@ -432,11 +443,13 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
       </div>
 
       {/* Offline KPI Strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className={`grid grid-cols-2 ${canViewRevenueAnalytics ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3`}>
         {[
           { label: t.kpiOfflineOrders, value: offlineKpis.orders.toLocaleString(), tone: 'text-white', isPrice: false },
           { label: t.kpiOfflineTickets, value: offlineKpis.ticketsSold.toLocaleString(), tone: 'text-amber-300', isPrice: false },
-          { label: t.kpiOfflineRevenue, value: formatCurrencyEgp(offlineKpis.revenueEgp, lang), tone: 'text-white', isPrice: true },
+          ...(canViewRevenueAnalytics
+            ? [{ label: t.kpiOfflineRevenue, value: formatCurrencyEgp(offlineKpis.revenueEgp, lang), tone: 'text-white', isPrice: true }]
+            : []),
           { label: t.kpiOfflineCheckedIn, value: offlineKpis.checkedIn.toLocaleString(), tone: 'text-emerald-400', isPrice: false },
         ].map((item) => (
           <div
@@ -475,6 +488,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
         existingCodes={existingCodes}
         adminName={adminName}
         adminEmail={adminEmail}
+        canViewRevenueAnalytics={canViewRevenueAnalytics}
         onNotify={onNotify}
       />
 

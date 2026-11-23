@@ -72,10 +72,10 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
       rulesText,
       /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\[\s*'checkedIn',\s*'checkedInAt',\s*'approvedBy',\s*'approvalMethod',\s*'updatedAt'\s*\]\)/,
     );
-    // Gate Staff offline create strictly scoped to offline_box_office + Offline
+    // Gate Staff offline create strictly scoped to offline-sale / offline_box_office + Offline
     assert.match(
       rulesText,
-      /isGateStaff\(\)\s*&&\s*incoming\(\)\.userId\s*==\s*'offline_box_office'\s*&&\s*incoming\(\)\.paymentMethod\s*==\s*'Offline'/,
+      /isGateStaff\(\)\s*&&\s*incoming\(\)\.userId\s+in\s+\['offline-sale',\s*'offline_box_office'\]\s*&&\s*incoming\(\)\.paymentMethod\s*==\s*'Offline'/,
     );
     // Gate Staff concert update strictly scoped to seatsLeft decrement
     assert.match(
@@ -110,6 +110,27 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.match(rulesText, /incoming\(\)\.checkedIn\s*==\s*false/);
     assert.match(rulesText, /incoming\(\)\.approvedBy\s*==\s*''/);
     assert.match(rulesText, /incoming\(\)\.approvalMethod\s*==\s*''/);
+    assert.match(rulesText, /isValidFanPricing\(incoming\(\)\)/);
+  });
+
+  it('enforces server-side fan pricing, seat capacity, promo validation, and safe concert poster URLs', () => {
+    const pricingFn = extractFunctionBody('isValidFanPricing');
+    assert.match(pricingFn, /data\.quantity\s*<=\s*concert\.seatsLeft/);
+    assert.match(pricingFn, /data\.unitPrice\s*==\s*concert\.tierPrices\[data\.tier\]/);
+    assert.match(pricingFn, /data\.totalEgp\s*==\s*subtotal\s*-\s*data\.discountEgp/);
+    assert.match(pricingFn, /data\.promoCode\s*==\s*''\s*&&\s*data\.discountEgp\s*==\s*0/);
+    assert.match(pricingFn, /isValidPromoDiscount\(/);
+
+    const promoDiscountFn = extractFunctionBody('isValidPromoDiscount');
+    assert.match(promoDiscountFn, /promo\.active\s*==\s*true/);
+    assert.match(promoDiscountFn, /promo\.tiers\.size\(\)\s*==\s*0\s*\|\|\s*tier\s+in\s+promo\.tiers/);
+
+    const posterFn = extractFunctionBody('isValidPosterUrl');
+    assert.match(posterFn, /\^https:\/\/\.\+/);
+    assert.match(posterFn, /\^data:image\/\(jpeg\|jpg\|png\|webp\);base64,/);
+    assert.doesNotMatch(posterFn, /svg/);
+    const concertFn = extractFunctionBody('isValidConcert');
+    assert.match(concertFn, /isValidPosterUrl\(data\.posterUrl\)/);
   });
 
   it('blocks orphaned bookings and waitlist entries by verifying parent concert exists', () => {

@@ -27,6 +27,8 @@ import {
   isAdminSessionActive,
   isEmailVerifiedAdminCandidate,
   isPendingEmailVerification,
+  isSafeHttpsUrl,
+  isSafeImageUrl,
   isValidHexColor,
   isVerifiedFanAccount,
   MAX_POSTER_DATA_URL_LENGTH,
@@ -39,6 +41,7 @@ import {
   parseOfflineTicketRows,
   partitionAdminSessions,
   sanitizeId,
+  sanitizeSpreadsheetCell,
   sortByCreatedAtDesc,
   suggestTierPrices,
   validateBookingInput,
@@ -885,4 +888,70 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
       [6, 7, 8],
     );
   });
+
+  it('parses Arabic-Indic numerals in offline Excel quantity/amount and Arabic pending statuses cleanly', () => {
+    const arRows: Record<string, unknown>[] = [
+      {
+        الاسم: 'مصطفى علي',
+        الموبايل: '٠١٠٢٣٤٥٦٧٨٩',
+        الفئة: 'جولد',
+        العدد: '٢',
+        المبلغ: '٨٥٠ ج.م',
+        المنفذ: 'كشك الجامعة',
+        الحالة: 'قيد المراجعة',
+      },
+      {
+        الاسم: 'ندى حسن',
+        الموبايل: '٠١١٩٨٧٦٥٤٣٢',
+        الفئة: 'فان بيت',
+        العدد: '٣',
+        المبلغ: '١٥٠٠',
+        المنفذ: 'مكتب قنا',
+        الحالة: 'مدفوع',
+      },
+    ];
+    const parsed = parseOfflineTicketRows(arRows, TEST_CONCERTS[0], 'Gate Staff', []);
+    assert.equal(parsed.errors.length, 0);
+    assert.equal(parsed.validBookings.length, 2);
+    assert.equal(parsed.validBookings[0].customerMobile, '01023456789');
+    assert.equal(parsed.validBookings[0].quantity, 2);
+    assert.equal(parsed.validBookings[0].totalEgp, 850);
+    assert.equal(parsed.validBookings[0].paymentStatus, 'Pending');
+    assert.equal(parsed.validBookings[1].tier, 'VIP');
+    assert.equal(parsed.validBookings[1].quantity, 3);
+    assert.equal(parsed.validBookings[1].totalEgp, 1500);
+    assert.equal(parsed.validBookings[1].paymentStatus, 'Paid');
+    assert.equal(parsed.paidTickets, 3);
+    assert.equal(parsed.totalRevenueEgp, 1500);
+  });
+
+  it('enforces safe HTTPS and image URL schemes and neutralizes Excel formula injection', () => {
+    assert.equal(isSafeHttpsUrl('https://docs.google.com/forms/d/abc/viewform'), true);
+    assert.equal(isSafeHttpsUrl('http://insecure.example.com'), false);
+    assert.equal(isSafeHttpsUrl('javascript:alert(1)'), false);
+    assert.equal(isSafeHttpsUrl('data:text/html,<script>alert(1)</script>'), false);
+
+    assert.equal(isSafeImageUrl(''), true);
+    assert.equal(isSafeImageUrl('/assets/hero-qena.jpg'), true);
+    assert.equal(isSafeImageUrl('https://cdn.example.com/poster.webp'), true);
+    assert.equal(isSafeImageUrl('data:image/jpeg;base64,/9j/4AAQSkZJRg=='), true);
+    assert.equal(isSafeImageUrl('data:image/png;base64,iVBORw0KGgo='), true);
+    assert.equal(isSafeImageUrl('data:image/svg+xml;base64,PHN2Zz4='), false);
+    assert.equal(isSafeImageUrl('javascript:alert(1)'), false);
+    assert.equal(isSafeImageUrl('/assets/../../etc/passwd'), false);
+
+    assert.equal(sanitizeSpreadsheetCell('=HYPERLINK("http://evil","x")'), "'=HYPERLINK(\"http://evil\",\"x\")");
+    assert.equal(sanitizeSpreadsheetCell('+CMD|calc'), "'+CMD|calc");
+    assert.equal(sanitizeSpreadsheetCell('-1+1'), "'-1+1");
+    assert.equal(sanitizeSpreadsheetCell('@SUM(A1:A2)'), "'@SUM(A1:A2)");
+    assert.equal(sanitizeSpreadsheetCell('Ahmed Hassan'), 'Ahmed Hassan');
+
+    // Verify cryptographically generated booking codes match strict GZ-XXXXXX format and have high uniqueness
+    const codes = new Set(Array.from({ length: 50 }, () => generateBookingCode()));
+    assert.ok(codes.size >= 48);
+    for (const c of codes) {
+      assert.match(c, /^GZ-[A-HJ-NP-Z2-9]{6}$/);
+    }
+  });
 });
+

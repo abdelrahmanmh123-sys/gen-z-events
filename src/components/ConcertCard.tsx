@@ -4,7 +4,7 @@ import { HERO_IMAGE_PATH } from '../data/defaults';
 import { useLanguage } from '../i18n/LanguageContext';
 import { formatCurrencyEgp, getGenreLabel } from '../i18n/translations';
 import type { Concert } from '../types';
-import { getTierUnitPrice } from '../utils/bookingLogic';
+import { getTierUnitPrice, isSafeImageUrl } from '../utils/bookingLogic';
 import { shareConcertDetails } from '../utils/shareConcert';
 
 interface ConcertCardProps {
@@ -84,15 +84,23 @@ export const ConcertCard: React.FC<ConcertCardProps> = ({
     <article className="group flex flex-col bg-[#101218] border border-white/10 hover:border-white/25 rounded-xl overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
       {/* Uniform 16:10 Poster Header with Distinct Stage Lighting Mood */}
       <div className="relative aspect-[16/10] bg-[#161923] overflow-hidden">
-        <img
-          src={concert.posterUrl || HERO_IMAGE_PATH}
-          alt={concert.title}
-          className={`w-full h-full object-cover ${concert.posterUrl ? 'object-center' : mood.objectPos} group-hover:scale-[1.03] transition-transform duration-500`}
-          loading="lazy"
-        />
-        <div
-          className={`absolute inset-0 bg-gradient-to-b ${concert.posterUrl ? 'from-black/15 via-[#101218]/25 to-[#101218]' : mood.tint}`}
-        />
+        {(() => {
+          const safePoster =
+            concert.posterUrl && isSafeImageUrl(concert.posterUrl) ? concert.posterUrl : '';
+          return (
+            <>
+              <img
+                src={safePoster || HERO_IMAGE_PATH}
+                alt={concert.title}
+                className={`w-full h-full object-cover ${safePoster ? 'object-center' : mood.objectPos} group-hover:scale-[1.03] transition-transform duration-500`}
+                loading="lazy"
+              />
+              <div
+                className={`absolute inset-0 bg-gradient-to-b ${safePoster ? 'from-black/15 via-[#101218]/25 to-[#101218]' : mood.tint}`}
+              />
+            </>
+          );
+        })()}
 
         {/* Top-End Action Controls */}
         <div className="absolute top-3 end-3 flex items-center gap-1.5">

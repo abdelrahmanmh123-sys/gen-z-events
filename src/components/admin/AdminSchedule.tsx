@@ -9,6 +9,7 @@ import type { TierColors, TierId } from '../../types';
 import {
   formatDateTimeDisplay,
   getDefaultUpcomingIsoDate,
+  isSafeImageUrl,
   MAX_POSTER_DATA_URL_LENGTH,
   parseBoundedIntInput,
   sanitizeId,
@@ -132,15 +133,11 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
       );
       return;
     }
-    if (
-      trimmedPoster.length > 0 &&
-      !trimmedPoster.startsWith('data:image/') &&
-      !trimmedPoster.startsWith('https://')
-    ) {
+    if (trimmedPoster.length > 0 && !isSafeImageUrl(trimmedPoster)) {
       onNotify(
         isAr
-          ? 'يجب أن يبدأ رابط البوستر بـ https:// أو استخدام زر رفع صورة.'
-          : 'Poster URL must start with https:// or use Upload Image.',
+          ? 'يجب أن يبدأ رابط البوستر بـ https:// أو استخدام زر رفع صورة (JPG/PNG/WebP).'
+          : 'Poster URL must start with https:// or use Upload Image (JPG/PNG/WebP).',
       );
       return;
     }

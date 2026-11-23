@@ -118,11 +118,51 @@ export function calculateOrderTotals(
   };
 }
 
+export function isSafeHttpsUrl(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('https://')) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:' && parsed.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export function isSafeImageUrl(raw: string | null | undefined): boolean {
+  if (!raw) return true;
+  const trimmed = raw.trim();
+  if (trimmed === '') return true;
+  if (trimmed.length > MAX_POSTER_DATA_URL_LENGTH) return false;
+  if (isSafeHttpsUrl(trimmed)) return true;
+  if (/^\/assets\/[a-zA-Z0-9_./\-]+$/.test(trimmed) && !trimmed.includes('..')) return true;
+  if (/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(trimmed)) return true;
+  return false;
+}
+
+export function sanitizeSpreadsheetCell(value: unknown): string {
+  const str = String(value ?? '');
+  if (/^[=+\-@\t\r]/.test(str)) {
+    return `'${str}`;
+  }
+  return str;
+}
+
 export function generateBookingCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let suffix = '';
-  for (let i = 0; i < 6; i++) {
-    suffix += chars[Math.floor(Math.random() * chars.length)];
+  const webCrypto = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+  if (webCrypto && typeof webCrypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(6);
+    webCrypto.getRandomValues(bytes);
+    for (let i = 0; i < 6; i++) {
+      suffix += chars[bytes[i] % chars.length];
+    }
+  } else {
+    for (let i = 0; i < 6; i++) {
+      suffix += chars[Math.floor(Math.random() * chars.length)];
+    }
   }
   return `GZ-${suffix}`;
 }
@@ -1236,7 +1276,8 @@ export function parseOfflineTicketRows(
       return;
     }
 
-    const qtyNum = rawQty ? Number(rawQty.replace(/,/g, '')) : 1;
+    const normalizedQtyStr = rawQty ? toAsciiDigits(rawQty).replace(/,/g, '').trim() : '';
+    const qtyNum = normalizedQtyStr ? Number(normalizedQtyStr) : 1;
     if (!Number.isInteger(qtyNum) || qtyNum < 1 || qtyNum > MAX_OFFLINE_QTY_PER_ROW) {
       errors.push({
         rowNumber,
@@ -1251,7 +1292,11 @@ export function parseOfflineTicketRows(
     let discountEgp = 0;
 
     if (rawAmount) {
-      const strippedAmount = rawAmount.replace(/[^0-9.\-]/g, '');
+      const normalizedAmount = toAsciiDigits(rawAmount)
+        .replace(/ج\s*\.\s*م\.?/g, '')
+        .replace(/\b(?:egp|l\.?\s*e\.?)\b/gi, '')
+        .replace(/[,٬\s]/g, '');
+      const strippedAmount = normalizedAmount.replace(/[^0-9.\-]/g, '');
       const cleanedAmount = Number(strippedAmount);
       if (
         strippedAmount === '' ||
@@ -1271,8 +1316,14 @@ export function parseOfflineTicketRows(
     }
 
     const cleanEmail = rawEmail.trim().toLowerCase().slice(0, 120);
+    const statusLower = rawStatus.trim().toLowerCase();
     const paymentStatus: 'Paid' | 'Pending' =
-      rawStatus.trim().toLowerCase() === 'pending' || rawStatus.trim().toLowerCase() === 'unpaid'
+      statusLower === 'pending' ||
+      statusLower === 'unpaid' ||
+      statusLower === 'معلق' ||
+      statusLower === 'معلّق' ||
+      statusLower === 'قيد المراجعة' ||
+      statusLower === 'غير مدفوع'
         ? 'Pending'
         : 'Paid';
     const checkedIn = parseTruthyFlag(rawCheckedIn);

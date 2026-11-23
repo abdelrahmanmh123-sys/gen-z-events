@@ -112,11 +112,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [concertId, onClose]);
 
+  const liveSeatsLeft = concert?.seatsLeft ?? 0;
+  const maxSelectable = Math.max(1, Math.min(MAX_QTY_PER_ORDER, liveSeatsLeft));
+
+  useEffect(() => {
+    if (liveSeatsLeft > 0 && quantity > maxSelectable) {
+      setQuantity(maxSelectable);
+    }
+  }, [liveSeatsLeft, maxSelectable, quantity]);
+
   if (!concert) return null;
 
   const isVerifiedUser = isVerifiedFanAccount(user);
   const soldOut = concert.seatsLeft <= 0;
-  const maxSelectable = MAX_QTY_PER_ORDER;
   const totals = calculateOrderTotals(concert, selectedTier, quantity, appliedPromo, promos);
   const activePayment = PAYMENT_COPY[lang][paymentMethod] || PAYMENT_COPY[lang].InstaPay;
   const selectedTierLabel = getTierCopy(selectedTier, lang).name;
@@ -328,7 +336,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               />
             </div>
             <button
-              type="submit"
+              type={!user || !isVerifiedUser ? 'button' : 'submit'}
+              onClick={!user || !isVerifiedUser ? onRequireAuth : undefined}
               disabled={submitting}
               className="w-full py-3 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors"
             >
@@ -353,8 +362,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-neutral-300" />
-                  {t.showLabel} <span dir="ltr">{concert.time}</span> ({t.doorsLabel}{' '}
-                  <span dir="ltr">{concert.doors}</span>)
+                  <span>
+                    {t.showLabel} <span dir="ltr">{concert.time}</span> ({t.doorsLabel}{' '}
+                    <span dir="ltr">{concert.doors}</span>)
+                  </span>
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-neutral-300" />
@@ -656,7 +667,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </div>
 
               <button
-                type="submit"
+                type={!user || !isVerifiedUser ? 'button' : 'submit'}
+                onClick={!user || !isVerifiedUser ? onRequireAuth : undefined}
                 disabled={submitting}
                 className="sm:w-auto w-full px-6 py-3 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-60 text-sm font-semibold text-[#08090C] transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
               >
