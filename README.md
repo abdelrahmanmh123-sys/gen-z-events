@@ -18,3 +18,11 @@ View your app in AI Studio: https://ai.studio/apps/ebd015a5-12b5-456c-b8c3-447ca
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Deploy Firestore Rules (Required Alongside Frontend Deploys)
+
+Whenever `firestore.rules` changes, deploy rules to Firebase (`firebase.json` targets `ai-studio-ebd015a5-12b5-456c-b8c3-447ca302527f`):
+
+```bash
+npx firebase-tools@latest deploy --only firestore:rules --project gen-z-events
+```
