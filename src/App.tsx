@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { Heart, Search, Shield, SlidersHorizontal } from 'lucide-react';
@@ -502,6 +503,7 @@ export default function App() {
             {toast}
           </div>
         )}
+        <Analytics />
       </>
     );
   }
@@ -761,6 +763,7 @@ export default function App() {
           {toast}
         </div>
       )}
+      <Analytics />
     </div>
   );
 }
