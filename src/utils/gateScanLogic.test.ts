@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Booking } from '../types';
 import {
+  buildAlreadyUsedVerdict,
+  buildGateScanSuccessVerdict,
   buildUnreadableQrVerdict,
   evaluateGateQrScan,
   formatScannedCodePreview,
@@ -251,4 +253,113 @@ test('camera fallback chain, error classification, and mobile image downscaling 
     width: 800,
     height: 600,
   });
+});
+
+test('evaluateGateQrScan allows a 5-ticket QR to be scanned 5 times showing (1/5) through (5/5) and rejects scan #6', () => {
+  let multiBooking: Booking = {
+    ...BASE_BOOKINGS[0],
+    bookingCode: 'GZ-FIVE55',
+    quantity: 5,
+    checkedIn: false,
+    checkedInCount: 0,
+    checkedInAt: '',
+    approvedBy: '',
+  };
+
+  for (let scanNum = 1; scanNum <= 5; scanNum++) {
+    const en = evaluateGateQrScan('GZ-FIVE55', [multiBooking], {
+      lang: 'en',
+      canConfirmPayments: false,
+    });
+    assert.equal(en.status, 'valid_ready');
+    assert.equal(en.isValid, true);
+    assert.equal(en.tone, 'success');
+    assert.equal(en.admittedCount, scanNum);
+    assert.equal(en.totalQuantity, 5);
+    assert.equal(en.remainingEntries, 5 - scanNum);
+    assert.ok(en.verdictBadge.includes(`(${scanNum}/5)`), `Expected (${scanNum}/5) in EN badge: ${en.verdictBadge}`);
+    assert.ok(en.headline.includes(`(${scanNum}/5)`), `Expected (${scanNum}/5) in EN headline: ${en.headline}`);
+    assert.ok(en.reason.includes(`(${scanNum}/5)`), `Expected (${scanNum}/5) in EN reason: ${en.reason}`);
+    assert.equal(en.booking?.checkedInCount, scanNum);
+    assert.equal(en.booking?.checkedIn, scanNum === 5);
+
+    const ar = evaluateGateQrScan('GZ-FIVE55', [multiBooking], {
+      lang: 'ar',
+      canConfirmPayments: false,
+    });
+    assert.equal(ar.isValid, true);
+    assert.ok(ar.verdictBadge.includes(`(${scanNum}/5)`), `Expected (${scanNum}/5) in AR badge: ${ar.verdictBadge}`);
+    assert.ok(ar.reason.includes(`(${scanNum}/5)`), `Expected (${scanNum}/5) in AR reason: ${ar.reason}`);
+
+    // Simulate persisted Firestore state advancing to next scan
+    multiBooking = {
+      ...multiBooking,
+      checkedInCount: scanNum,
+      checkedIn: scanNum >= 5,
+      checkedInAt: `8:0${scanNum} PM`,
+      approvedBy: 'Gate Officer 2',
+    };
+  }
+
+  // 6th scan must be rejected as fully used (5/5)
+  const sixthEn = evaluateGateQrScan('GZ-FIVE55', [multiBooking], {
+    lang: 'en',
+    canConfirmPayments: false,
+  });
+  assert.equal(sixthEn.status, 'invalid_already_used');
+  assert.equal(sixthEn.isValid, false);
+  assert.equal(sixthEn.tone, 'error');
+  assert.equal(sixthEn.admittedCount, 5);
+  assert.equal(sixthEn.totalQuantity, 5);
+  assert.equal(sixthEn.remainingEntries, 0);
+  assert.ok(sixthEn.verdictBadge.includes('(5/5)'));
+  assert.ok(sixthEn.reason.includes('(5/5)'));
+  assert.ok(sixthEn.reason.includes('8:05 PM'));
+
+  const sixthAr = evaluateGateQrScan('GZ-FIVE55', [multiBooking], {
+    lang: 'ar',
+    canConfirmPayments: false,
+  });
+  assert.equal(sixthAr.status, 'invalid_already_used');
+  assert.equal(sixthAr.isValid, false);
+  assert.ok(sixthAr.verdictBadge.includes('(5/5)'));
+  assert.ok(sixthAr.reason.includes('(5/5)'));
+});
+
+test('multi-ticket scan verdict handles legacy bookings without checkedInCount and concurrent other-gate conflict', () => {
+  const legacyFull: Booking = {
+    ...BASE_BOOKINGS[0],
+    bookingCode: 'GZ-LEG04',
+    quantity: 4,
+    checkedIn: true,
+    checkedInAt: '7:30 PM',
+    approvedBy: 'Lead Staff',
+  };
+  const rejected = evaluateGateQrScan('GZ-LEG04', [legacyFull], {
+    lang: 'en',
+    canConfirmPayments: false,
+  });
+  assert.equal(rejected.status, 'invalid_already_used');
+  assert.equal(rejected.isValid, false);
+  assert.ok(rejected.verdictBadge.includes('(4/4)'));
+
+  const otherGate = buildAlreadyUsedVerdict(legacyFull, {
+    lang: 'en',
+    checkedAt: '8:11 PM',
+    approvedBy: 'Gate B',
+    scannedOnOtherGate: true,
+  });
+  assert.equal(otherGate.isValid, false);
+  assert.ok(otherGate.reason.includes('another scanner'));
+  assert.ok(otherGate.reason.includes('(4/4)'));
+
+  const paidAndAdmitted = buildGateScanSuccessVerdict(
+    { ...BASE_BOOKINGS[2], quantity: 5 },
+    1,
+    { lang: 'en', paidAndAdmitted: true },
+  );
+  assert.equal(paidAndAdmitted.isValid, true);
+  assert.ok(paidAndAdmitted.verdictBadge.includes('(1/5)'));
+  assert.equal(paidAndAdmitted.remainingEntries, 4);
+  assert.equal(paidAndAdmitted.booking?.checkedIn, false);
 });

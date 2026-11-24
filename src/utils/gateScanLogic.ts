@@ -1,5 +1,6 @@
 import { getPaymentMethodLabel, getTierCopy, type Language } from '../i18n/translations';
 import type { Booking } from '../types';
+import { formatCheckInProgress, getBookingCheckedInCount } from './bookingLogic';
 
 export type GateScanStatus =
   | 'valid_ready'
@@ -18,6 +19,9 @@ export interface GateScanVerdict {
   reason: string;
   scannedCode?: string;
   booking?: Booking;
+  admittedCount?: number;
+  totalQuantity?: number;
+  remainingEntries?: number;
 }
 
 const GENZ_TICKET_CODE_REGEX = /^(GZ|OFF)-[A-Z0-9_-]{3,28}$/i;
@@ -39,6 +43,165 @@ export function formatScannedCodePreview(rawCode: string, maxLen = 48): string {
   const cleaned = rawCode.trim().replace(/\s+/g, ' ');
   if (cleaned.length <= maxLen) return cleaned;
   return `${cleaned.slice(0, maxLen - 1)}…`;
+}
+
+export function buildAlreadyUsedVerdict(
+  found: Booking,
+  options: { lang: Language; checkedAt?: string; approvedBy?: string; scannedOnOtherGate?: boolean },
+): GateScanVerdict {
+  const isAr = options.lang === 'ar';
+  const total = Math.max(1, Math.floor(found.quantity || 1));
+  const usedCount = total;
+  const counter = formatCheckInProgress(usedCount, total);
+  const usedAt = options.checkedAt || found.checkedInAt || (isAr ? 'وقت سابق' : 'earlier');
+  const staffName = options.approvedBy ?? found.approvedBy;
+  const byPart = staffName
+    ? isAr
+      ? ` بواسطة ${staffName}`
+      : ` by ${staffName}`
+    : '';
+
+  if (total > 1) {
+    return {
+      status: 'invalid_already_used',
+      isValid: false,
+      tone: 'error',
+      verdictBadge: isAr
+        ? `غير صالح — مستخدمة بالكامل ${counter}`
+        : `INVALID — ALREADY USED ${counter}`,
+      headline: isAr
+        ? `تم استخدام جميع التذاكر ${counter} لهذا الحجز`
+        : `All ${total} Entries Used ${counter}`,
+      reason: options.scannedOnOtherGate
+        ? isAr
+          ? `تم استخدام جميع الـ ${total} تذاكر ${counter} لحجز ${found.customerName} (${found.bookingCode}) للتو على بوابة أخرى في ${usedAt}${byPart}. لا يوجد دخول متبقٍ — لا تسمح بالدخول.`
+          : `All ${total} entries ${counter} for ${found.customerName} (${found.bookingCode}) were just completed on another scanner at ${usedAt}${byPart}. No entries remaining — do not admit.`
+        : isAr
+          ? `تم مسح جميع الـ ${total} تذاكر ${counter} لحجز ${found.customerName} (${found.bookingCode}) بالكامل (آخر دخول في ${usedAt}${byPart}). لا يوجد دخول متبقٍ على هذا الـ QR.`
+          : `All ${total} of ${total} entries ${counter} on ${found.customerName}'s pass (${found.bookingCode}) have already been scanned (last at ${usedAt}${byPart}). No entries remaining.`,
+      scannedCode: found.bookingCode,
+      booking: {
+        ...found,
+        checkedIn: true,
+        checkedInCount: total,
+        checkedInAt: options.checkedAt || found.checkedInAt,
+      },
+      admittedCount: total,
+      totalQuantity: total,
+      remainingEntries: 0,
+    };
+  }
+
+  return {
+    status: 'invalid_already_used',
+    isValid: false,
+    tone: 'error',
+    verdictBadge: isAr ? 'غير صالح — مستخدمة مسبقاً' : 'INVALID — ALREADY USED',
+    headline: isAr
+      ? 'تم استخدام هذه التذكرة للدخول من قبل'
+      : 'Ticket Already Used Before',
+    reason: options.scannedOnOtherGate
+      ? isAr
+        ? `تم تسجيل دخول هذه التذكرة للتو على بوابة أخرى في ${usedAt}${byPart}. لا تسمح بالدخول.`
+        : `This pass was just admitted on another scanner at ${usedAt}${byPart}. Do not admit.`
+      : isAr
+        ? `تذكرة ${found.customerName} (${found.bookingCode}) تم مسحها وتسجيل دخولها مسبقاً في ${usedAt}${byPart}. لا يمكن استخدام نفس الـ QR أكثر من مرة.`
+        : `${found.customerName}'s pass (${found.bookingCode}) was already scanned and admitted at ${usedAt}${byPart}. This QR cannot be reused.`,
+    scannedCode: found.bookingCode,
+    booking: {
+      ...found,
+      checkedIn: true,
+      checkedInCount: total,
+      checkedInAt: options.checkedAt || found.checkedInAt,
+    },
+    admittedCount: total,
+    totalQuantity: total,
+    remainingEntries: 0,
+  };
+}
+
+export function buildGateScanSuccessVerdict(
+  found: Booking,
+  admittedCount: number,
+  options: { lang: Language; checkedInAt?: string; paidAndAdmitted?: boolean },
+): GateScanVerdict {
+  const isAr = options.lang === 'ar';
+  const total = Math.max(1, Math.floor(found.quantity || 1));
+  const clampedCount = Math.max(1, Math.min(total, Math.floor(admittedCount)));
+  const remaining = Math.max(0, total - clampedCount);
+  const isFullyEntered = remaining === 0;
+  const counter = formatCheckInProgress(clampedCount, total);
+  const tierLabel = getTierCopy(found.tier, options.lang).name;
+
+  let verdictBadge: string;
+  if (options.paidAndAdmitted) {
+    verdictBadge =
+      total > 1
+        ? isAr
+          ? `تذكرة صالحة ${counter} — تم الدفع والدخول`
+          : `VALID ${counter} — PAID & ADMITTED`
+        : isAr
+          ? 'تذكرة صالحة — تم الدفع والدخول'
+          : 'VALID — PAID & CHECKED IN';
+  } else if (total > 1) {
+    verdictBadge = isFullyEntered
+      ? isAr
+        ? `تذكرة صالحة ${counter} — اكتمل الدخول`
+        : `VALID TICKET ${counter} — ALL ENTERED`
+      : isAr
+        ? `تذكرة صالحة ${counter} — دخول مسموح`
+        : `VALID TICKET ${counter} — ENTRY APPROVED`;
+  } else {
+    verdictBadge = isAr ? 'تذكرة صالحة — دخول مسموح' : 'VALID TICKET — ENTRY APPROVED';
+  }
+
+  const headline =
+    total > 1
+      ? isAr
+        ? `أهلاً ${found.customerName} — ${total}x ${tierLabel} ${counter}`
+        : `Welcome ${found.customerName} — ${total}x ${tierLabel} ${counter}`
+      : isAr
+        ? `أهلاً ${found.customerName} — ${total}x ${tierLabel}`
+        : `Welcome ${found.customerName} — ${total}x ${tierLabel}`;
+
+  let reason: string;
+  if (total > 1 && remaining > 0) {
+    reason = isAr
+      ? `تم تسجيل الدخول ${counter} بنجاح لحفل «${found.concertTitle}» (كود: ${found.bookingCode}). متبقي ${remaining} ${remaining === 1 ? 'دخول' : 'دخولاً'} على نفس رمز الـ QR.`
+      : `Entry ${counter} verified & admitted for "${found.concertTitle}" (Code: ${found.bookingCode}). ${remaining} ${remaining === 1 ? 'entry' : 'entries'} remaining on this QR.`;
+  } else if (total > 1) {
+    reason = isAr
+      ? `تم تسجيل آخر دخول ${counter} بنجاح لحفل «${found.concertTitle}» (كود: ${found.bookingCode}). اكتمل دخول جميع الـ ${total} تذاكر على هذا الرمز.`
+      : `Final entry ${counter} verified & admitted for "${found.concertTitle}" (Code: ${found.bookingCode}). All ${total} tickets on this QR have now entered.`;
+  } else if (options.paidAndAdmitted) {
+    reason = isAr
+      ? `تم تأكيد الدفع وتسجيل الدخول بنجاح للكود ${found.bookingCode} (${found.concertTitle}).`
+      : `Payment confirmed and entry approved for ${found.bookingCode} (${found.concertTitle}).`;
+  } else {
+    reason = isAr
+      ? `تم التحقق من التذكرة وتسجيل الدخول بنجاح لحفل «${found.concertTitle}» (كود: ${found.bookingCode}).`
+      : `Pass verified and checked in for "${found.concertTitle}" (Code: ${found.bookingCode}).`;
+  }
+
+  return {
+    status: 'valid_ready',
+    isValid: true,
+    tone: 'success',
+    verdictBadge,
+    headline,
+    reason,
+    scannedCode: found.bookingCode,
+    booking: {
+      ...found,
+      paymentStatus: 'Paid',
+      checkedIn: isFullyEntered,
+      checkedInCount: clampedCount,
+      checkedInAt: options.checkedInAt ?? found.checkedInAt,
+    },
+    admittedCount: clampedCount,
+    totalQuantity: total,
+    remainingEntries: remaining,
+  };
 }
 
 /**
@@ -89,27 +252,11 @@ export function evaluateGateQrScan(
     };
   }
 
-  if (found.checkedIn) {
-    const usedAt = found.checkedInAt || (isAr ? 'وقت سابق' : 'earlier');
-    const byPart = found.approvedBy
-      ? isAr
-        ? ` بواسطة ${found.approvedBy}`
-        : ` by ${found.approvedBy}`
-      : '';
-    return {
-      status: 'invalid_already_used',
-      isValid: false,
-      tone: 'error',
-      verdictBadge: isAr ? 'غير صالح — مستخدمة مسبقاً' : 'INVALID — ALREADY USED',
-      headline: isAr
-        ? 'تم استخدام هذه التذكرة للدخول من قبل'
-        : 'Ticket Already Used Before',
-      reason: isAr
-        ? `تذكرة ${found.customerName} (${found.bookingCode}) تم مسحها وتسجيل دخولها مسبقاً في ${usedAt}${byPart}. لا يمكن استخدام نفس الـ QR أكثر من مرة.`
-        : `${found.customerName}'s pass (${found.bookingCode}) was already scanned and admitted at ${usedAt}${byPart}. This QR cannot be reused.`,
-      scannedCode: found.bookingCode,
-      booking: found,
-    };
+  const total = Math.max(1, Math.floor(found.quantity || 1));
+  const currentCount = getBookingCheckedInCount(found);
+
+  if (currentCount >= total) {
+    return buildAlreadyUsedVerdict(found, { lang: options.lang });
   }
 
   if (found.paymentStatus !== 'Paid') {
@@ -131,24 +278,13 @@ export function evaluateGateQrScan(
           : `${found.customerName}'s reservation (${found.bookingCode}) is still UNPAID (${methodLabel} · Ref: ${found.transferRef}). Entry requires Super Admin payment confirmation.`,
       scannedCode: found.bookingCode,
       booking: found,
+      admittedCount: currentCount,
+      totalQuantity: total,
+      remainingEntries: Math.max(0, total - currentCount),
     };
   }
 
-  const tierLabel = getTierCopy(found.tier, options.lang).name;
-  return {
-    status: 'valid_ready',
-    isValid: true,
-    tone: 'success',
-    verdictBadge: isAr ? 'تذكرة صالحة — دخول مسموح' : 'VALID TICKET — ENTRY APPROVED',
-    headline: isAr
-      ? `أهلاً ${found.customerName} — ${found.quantity}x ${tierLabel}`
-      : `Welcome ${found.customerName} — ${found.quantity}x ${tierLabel}`,
-    reason: isAr
-      ? `تم التحقق من التذكرة وتسجيل الدخول بنجاح لحفل «${found.concertTitle}» (كود: ${found.bookingCode}).`
-      : `Pass verified and checked in for "${found.concertTitle}" (Code: ${found.bookingCode}).`,
-    scannedCode: found.bookingCode,
-    booking: { ...found, checkedIn: true },
-  };
+  return buildGateScanSuccessVerdict(found, currentCount + 1, { lang: options.lang });
 }
 
 /**

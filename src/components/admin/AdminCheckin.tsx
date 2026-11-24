@@ -18,12 +18,20 @@ import {
 import {
   adminConfirmAndCheckIn,
   adminConfirmPayment,
+  adminDecrementCheckIn,
   adminDeleteBooking,
-  adminToggleCheckIn,
+  adminScanCheckIn,
 } from '../../services/firestoreService';
 import { formatFriendlyFirebaseError } from '../../firebase';
 import type { Booking } from '../../types';
 import {
+  formatCheckInProgress,
+  getBookingCheckedInCount,
+  isBookingFullyCheckedIn,
+} from '../../utils/bookingLogic';
+import {
+  buildAlreadyUsedVerdict,
+  buildGateScanSuccessVerdict,
   buildUnreadableQrVerdict,
   classifyCameraError,
   computeDecodedImageDimensions,
@@ -143,31 +151,35 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
 
     verifyingRef.current = true;
     try {
-      await adminToggleCheckIn(found, true, adminName, method);
+      const scanRes = await adminScanCheckIn(found, adminName, method);
       playGateTone('success', soundEnabled);
-      setScanResult(evaluation);
-      onNotify(isAr ? `تم تسجيل دخول ${found.bookingCode}.` : `Checked in ${found.bookingCode}.`);
+      const authoritativeVerdict = buildGateScanSuccessVerdict(found, scanRes.checkedInCount, {
+        lang,
+        checkedInAt: scanRes.checkedInAt,
+      });
+      setScanResult(authoritativeVerdict);
+      const counterSuffix =
+        scanRes.quantity > 1 ? ` ${formatCheckInProgress(scanRes.checkedInCount, scanRes.quantity)}` : '';
+      onNotify(
+        isAr
+          ? `تم تسجيل دخول ${found.bookingCode}${counterSuffix}.`
+          : `Checked in ${found.bookingCode}${counterSuffix}.`,
+      );
     } catch (err) {
       playGateTone('error', soundEnabled);
       const rawMsg = err instanceof Error ? err.message : '';
       if (rawMsg.startsWith('ALREADY_CHECKED_IN|')) {
-        const [, checkedAt, byStaff] = rawMsg.split('|');
-        const detailParts = [
-          checkedAt ? (isAr ? `الساعة ${checkedAt}` : `at ${checkedAt}`) : '',
-          byStaff ? (isAr ? `بواسطة ${byStaff}` : `by ${byStaff}`) : '',
-        ].filter(Boolean);
-        setScanResult({
-          status: 'invalid_already_used',
-          isValid: false,
-          tone: 'error',
-          verdictBadge: isAr ? 'مرفوض — تذكرة مستخدمة بالفعل' : 'INVALID — ALREADY CHECKED IN',
-          headline: `${found.customerName} (${found.bookingCode})`,
-          reason: isAr
-            ? `تم تسجيل دخول هذه التذكرة للتو على بوابة أخرى${detailParts.length ? ` (${detailParts.join(' · ')})` : ''}. لا تسمح بالدخول.`
-            : `This pass was just admitted on another scanner${detailParts.length ? ` (${detailParts.join(' · ')})` : ''}. Do not admit.`,
-          scannedCode: found.bookingCode,
-          booking: { ...found, checkedIn: true, checkedInAt: checkedAt || found.checkedInAt },
-        });
+        const parts = rawMsg.split('|');
+        const checkedAt = parts.length >= 5 ? parts[3] : parts[1];
+        const byStaff = parts.length >= 5 ? parts[4] : parts[2];
+        setScanResult(
+          buildAlreadyUsedVerdict(found, {
+            lang,
+            checkedAt,
+            approvedBy: byStaff,
+            scannedOnOtherGate: true,
+          }),
+        );
       } else {
         setScanResult({
           status: 'invalid_not_found',
@@ -299,7 +311,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
               cooldownTimerRef.current = window.setTimeout(() => {
                 lastScannedRef.current = '';
                 cooldownTimerRef.current = null;
-              }, 3000);
+              }, 2200);
             }
           }
         }
@@ -392,8 +404,10 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     const q = rosterSearch.trim().toLowerCase();
     return bookings.filter((b) => {
       if (rosterFilter === 'unpaid' && b.paymentStatus !== 'Pending') return false;
-      if (rosterFilter === 'pending' && (b.paymentStatus !== 'Paid' || b.checkedIn)) return false;
-      if (rosterFilter === 'checked' && !b.checkedIn) return false;
+      if (rosterFilter === 'pending' && (b.paymentStatus !== 'Paid' || isBookingFullyCheckedIn(b))) {
+        return false;
+      }
+      if (rosterFilter === 'checked' && getBookingCheckedInCount(b) === 0) return false;
       if (rosterFilter === 'offline' && b.paymentMethod !== 'Offline') return false;
       if (q) {
         const hay = `${b.bookingCode} ${b.customerName} ${b.customerMobile} ${b.concertTitle} ${b.transferRef}`.toLowerCase();
@@ -441,25 +455,21 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     if (!canConfirmPayments) return;
     setBusyCode(b.bookingCode);
     try {
-      await adminConfirmAndCheckIn(b, adminName, 'Gate Pay + Entry');
+      const scanRes = await adminConfirmAndCheckIn(b, adminName, 'Gate Pay + Entry');
       playGateTone('success', soundEnabled);
-      const tierLabel = getTierCopy(b.tier, lang).name;
-      setScanResult({
-        status: 'valid_ready',
-        isValid: true,
-        tone: 'success',
-        verdictBadge: isAr ? 'تذكرة صالحة — تم الدفع والدخول' : 'VALID — PAID & CHECKED IN',
-        headline: `${b.customerName} — ${b.quantity}x ${tierLabel}`,
-        reason: isAr
-          ? `تم تأكيد الدفع وتسجيل الدخول بنجاح للكود ${b.bookingCode} (${b.concertTitle}).`
-          : `Payment confirmed and entry approved for ${b.bookingCode} (${b.concertTitle}).`,
-        scannedCode: b.bookingCode,
-        booking: { ...b, paymentStatus: 'Paid', checkedIn: true },
-      });
+      setScanResult(
+        buildGateScanSuccessVerdict(b, scanRes.checkedInCount, {
+          lang,
+          checkedInAt: scanRes.checkedInAt,
+          paidAndAdmitted: true,
+        }),
+      );
+      const counterSuffix =
+        scanRes.quantity > 1 ? ` ${formatCheckInProgress(scanRes.checkedInCount, scanRes.quantity)}` : '';
       onNotify(
         isAr
-          ? `تم تأكيد الدفع وتسجيل دخول ${b.bookingCode}.`
-          : `Confirmed payment and admitted ${b.bookingCode}.`,
+          ? `تم تأكيد الدفع وتسجيل دخول ${b.bookingCode}${counterSuffix}.`
+          : `Confirmed payment and admitted ${b.bookingCode}${counterSuffix}.`,
       );
     } catch (err) {
       onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
@@ -468,55 +478,79 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     }
   };
 
-  const handleToggleCheckIn = async (b: Booking) => {
+  const handleRosterAdvanceOrUndo = async (b: Booking, direction: 'admit' | 'undo') => {
     if (b.paymentStatus !== 'Paid') return;
     setBusyCode(b.bookingCode);
-    const nextCheckedIn = !b.checkedIn;
     try {
-      await adminToggleCheckIn(b, nextCheckedIn, adminName, 'Roster Toggle');
-      setScanResult((prev) =>
-        prev?.booking?.bookingCode === b.bookingCode
-          ? {
-              status: nextCheckedIn ? 'valid_ready' : 'invalid_unpaid',
-              isValid: nextCheckedIn,
-              tone: nextCheckedIn ? 'success' : 'warn',
-              verdictBadge: nextCheckedIn
-                ? isAr
-                  ? 'تذكرة صالحة — دخول مسموح'
-                  : 'VALID TICKET — ENTRY APPROVED'
-                : isAr
-                  ? 'تم التراجع عن الدخول'
-                  : 'CHECK-IN REVERTED',
-              headline: `${b.customerName} (${b.bookingCode})`,
-              reason: nextCheckedIn
-                ? isAr
-                  ? `تم تسجيل دخول التذكرة بنجاح (${b.concertTitle}).`
-                  : `Ticket marked as checked in (${b.concertTitle}).`
-                : isAr
-                  ? 'تم التراجع عن تسجيل دخول هذه التذكرة ويمكن مسحها مجدداً.'
-                  : 'Check-in status was reverted; this ticket can be scanned again.',
-              scannedCode: b.bookingCode,
-              booking: { ...b, checkedIn: nextCheckedIn },
-            }
-          : prev,
-      );
-      onNotify(
-        b.checkedIn
-          ? isAr
-            ? `تم التراجع عن تسجيل دخول ${b.bookingCode}.`
-            : `Reverted check-in for ${b.bookingCode}.`
-          : isAr
-            ? `تم تسجيل دخول ${b.bookingCode}.`
-            : `Checked in ${b.bookingCode}.`,
-      );
+      if (direction === 'admit') {
+        const scanRes = await adminScanCheckIn(b, adminName, 'Roster Check-In');
+        playGateTone('success', soundEnabled);
+        setScanResult((prev) =>
+          prev?.booking?.bookingCode === b.bookingCode
+            ? buildGateScanSuccessVerdict(b, scanRes.checkedInCount, {
+                lang,
+                checkedInAt: scanRes.checkedInAt,
+              })
+            : prev,
+        );
+        const counterSuffix =
+          scanRes.quantity > 1 ? ` ${formatCheckInProgress(scanRes.checkedInCount, scanRes.quantity)}` : '';
+        onNotify(
+          isAr
+            ? `تم تسجيل دخول ${b.bookingCode}${counterSuffix}.`
+            : `Checked in ${b.bookingCode}${counterSuffix}.`,
+        );
+      } else {
+        const undoRes = await adminDecrementCheckIn(b, adminName, 'Roster Undo');
+        const counterSuffix =
+          undoRes.quantity > 1 ? ` ${formatCheckInProgress(undoRes.checkedInCount, undoRes.quantity)}` : '';
+        setScanResult((prev) =>
+          prev?.booking?.bookingCode === b.bookingCode
+            ? {
+                status: 'invalid_unpaid',
+                isValid: false,
+                tone: 'warn',
+                verdictBadge: isAr
+                  ? `تم التراجع عن الدخول${counterSuffix}`
+                  : `CHECK-IN REVERTED${counterSuffix}`,
+                headline: `${b.customerName} (${b.bookingCode})`,
+                reason:
+                  undoRes.quantity > 1
+                    ? isAr
+                      ? `تم التراجع عن دخول واحد. العداد الحالي ${formatCheckInProgress(undoRes.checkedInCount, undoRes.quantity)} ويمكن مسح التذكرة مجدداً.`
+                      : `Reverted 1 entry. Current scan count is ${formatCheckInProgress(undoRes.checkedInCount, undoRes.quantity)} and this pass can be scanned again.`
+                    : isAr
+                      ? 'تم التراجع عن تسجيل دخول هذه التذكرة ويمكن مسحها مجدداً.'
+                      : 'Check-in status was reverted; this ticket can be scanned again.',
+                scannedCode: b.bookingCode,
+                booking: {
+                  ...b,
+                  checkedIn: false,
+                  checkedInCount: undoRes.checkedInCount,
+                  checkedInAt: undoRes.checkedInAt,
+                },
+                admittedCount: undoRes.checkedInCount,
+                totalQuantity: undoRes.quantity,
+                remainingEntries: Math.max(0, undoRes.quantity - undoRes.checkedInCount),
+              }
+            : prev,
+        );
+        onNotify(
+          isAr
+            ? `تم التراجع عن تسجيل دخول ${b.bookingCode}${counterSuffix}.`
+            : `Reverted check-in for ${b.bookingCode}${counterSuffix}.`,
+        );
+      }
     } catch (err) {
       const rawMsg = err instanceof Error ? err.message : '';
       if (rawMsg.startsWith('ALREADY_CHECKED_IN|')) {
         playGateTone('error', soundEnabled);
+        const total = Math.max(1, Math.floor(b.quantity || 1));
+        const counterSuffix = total > 1 ? ` ${formatCheckInProgress(total, total)}` : '';
         onNotify(
           isAr
-            ? `التذكرة ${b.bookingCode} تم تسجيل دخولها بالفعل على جهاز آخر.`
-            : `Ticket ${b.bookingCode} was already checked in on another device.`,
+            ? `التذكرة ${b.bookingCode}${counterSuffix} تم استخدامها بالكامل على جهاز آخر.`
+            : `Ticket ${b.bookingCode}${counterSuffix} was already fully checked in on another device.`,
         );
       } else {
         onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
@@ -786,6 +820,60 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
                 </button>
               </div>
 
+              {/* Multi-Ticket Scan Counter Strip (e.g. (1/5), (2/5), ..., (5/5)) */}
+              {scanResult.booking &&
+                (scanResult.totalQuantity ?? Math.max(1, Math.floor(scanResult.booking.quantity || 1))) > 1 && (() => {
+                  const totalQty =
+                    scanResult.totalQuantity ?? Math.max(1, Math.floor(scanResult.booking.quantity || 1));
+                  const scannedQty =
+                    scanResult.admittedCount ?? getBookingCheckedInCount(scanResult.booking);
+                  const remainingQty = Math.max(0, totalQty - scannedQty);
+                  const pct = Math.min(100, Math.round((scannedQty / totalQty) * 100));
+                  return (
+                    <div
+                      data-testid="multi-scan-counter"
+                      className="rounded-lg bg-black/35 border border-white/15 p-3 space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <span className="text-[11px] uppercase tracking-wider text-white/65 block">
+                            {t.entriesProgressLabel}
+                          </span>
+                          <span className="text-xs font-medium text-white/90">
+                            {remainingQty > 0
+                              ? `${remainingQty} ${t.entriesRemainingWord}`
+                              : t.allEntriesAdmitted}
+                          </span>
+                        </div>
+                        <span
+                          dir="ltr"
+                          className={`font-mono-num text-xl sm:text-2xl font-black px-3 py-1 rounded-lg border ${
+                            scanResult.tone === 'success'
+                              ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200'
+                              : scanResult.tone === 'warn'
+                                ? 'bg-amber-400/20 border-amber-300/50 text-amber-200'
+                                : 'bg-rose-500/25 border-rose-400/50 text-rose-200'
+                          }`}
+                        >
+                          {formatCheckInProgress(scannedQty, totalQty)}
+                        </span>
+                      </div>
+                      <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            scanResult.tone === 'success'
+                              ? 'bg-emerald-400'
+                              : scanResult.tone === 'warn'
+                                ? 'bg-amber-400'
+                                : 'bg-rose-400'
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+
               {/* Detailed Reason Explanation */}
               <p className="text-xs sm:text-sm leading-relaxed text-white/90">
                 {scanResult.reason}
@@ -835,6 +923,24 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       {t.confirmPayAndApprove}
+                    </button>
+                  )}
+                {scanResult.isValid &&
+                  scanResult.booking &&
+                  (scanResult.remainingEntries ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void verifyCode(scanResult.booking!.bookingCode, 'Gate Next Entry')}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-[#04140D] transition-colors"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      {t.admitNextBtn}{' '}
+                      <span className="font-mono-num" dir="ltr">
+                        {formatCheckInProgress(
+                          (scanResult.admittedCount ?? 0) + 1,
+                          scanResult.totalQuantity ?? scanResult.booking.quantity,
+                        )}
+                      </span>
                     </button>
                   )}
                 <button
@@ -999,20 +1105,51 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
                               {t.awaitingSuperAdmin}
                             </span>
                           )
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={busyCode === b.bookingCode}
-                            onClick={() => void handleToggleCheckIn(b)}
-                            className={`px-2.5 py-1.5 rounded-md font-semibold border ${
-                              b.checkedIn
-                                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                                : 'bg-white/[0.06] border-white/15 text-white hover:bg-white/[0.12]'
-                            }`}
-                          >
-                            {b.checkedIn ? t.statusCheckedIn : t.checkInBtn}
-                          </button>
-                        )}
+                        ) : (() => {
+                          const total = Math.max(1, Math.floor(b.quantity || 1));
+                          const scanned = getBookingCheckedInCount(b);
+                          const isFull = scanned >= total;
+                          const isPartial = scanned > 0 && !isFull;
+                          const counter = total > 1 ? ` ${formatCheckInProgress(scanned, total)}` : '';
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                disabled={busyCode === b.bookingCode}
+                                onClick={() =>
+                                  void handleRosterAdvanceOrUndo(b, isFull ? 'undo' : 'admit')
+                                }
+                                className={`px-2.5 py-1.5 rounded-md font-semibold border ${
+                                  isFull
+                                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                                    : isPartial
+                                      ? 'bg-cyan-500/15 border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/25'
+                                      : 'bg-white/[0.06] border-white/15 text-white hover:bg-white/[0.12]'
+                                }`}
+                              >
+                                {isFull ? t.statusCheckedIn : t.checkInBtn}
+                                {counter && (
+                                  <span className="font-mono-num" dir="ltr">
+                                    {counter}
+                                  </span>
+                                )}
+                              </button>
+                              {isPartial && (
+                                <button
+                                  type="button"
+                                  disabled={busyCode === b.bookingCode}
+                                  onClick={() => void handleRosterAdvanceOrUndo(b, 'undo')}
+                                  aria-label={`${t.undoOneScanAria} (${b.bookingCode})`}
+                                  title={t.undoOneScanAria}
+                                  className="px-2 py-1.5 rounded-md border border-white/12 bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 hover:text-white font-mono-num text-[11px]"
+                                  dir="ltr"
+                                >
+                                  -1
+                                </button>
+                              )}
+                            </>
+                          );
+                        })()}
 
                         {canDeleteBookings &&
                           (confirmDeleteCode === b.bookingCode ? (

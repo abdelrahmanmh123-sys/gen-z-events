@@ -7,17 +7,32 @@ import {
   Copy,
   MapPin,
   Minus,
+  Pencil,
   Plus,
+  Save,
+  Shield,
   Tag,
   X,
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import { PAYMENT_METHODS, TICKET_TIERS } from '../data/defaults';
 import { formatFriendlyFirebaseError } from '../firebase';
-import { createBooking, createWaitlistEntry } from '../services/firestoreService';
-import type { Concert, OnlinePaymentMethodId, Promo, TierId, UserProfile } from '../types';
+import {
+  adminSavePaymentConfig,
+  createBooking,
+  createWaitlistEntry,
+} from '../services/firestoreService';
+import type {
+  Concert,
+  OnlinePaymentMethodId,
+  PaymentConfig,
+  Promo,
+  TierId,
+  UserProfile,
+} from '../types';
 import {
   calculateOrderTotals,
+  DEFAULT_PAYMENT_CONFIG,
   generateBookingCode,
   getTierColorHex,
   getTierUnitPrice,
@@ -25,23 +40,28 @@ import {
   isVerifiedFanAccount,
   MAX_QTY_PER_ORDER,
   normalizeEgyptianMobile,
+  toAsciiDigits,
   validateBookingInput,
+  validatePaymentConfigInput,
   validateWaitlistInput,
 } from '../utils/bookingLogic';
 import { copyTextToClipboard } from '../utils/passExport';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
+  buildPaymentMethodCopy,
   formatCurrencyEgp,
   getGenreLabel,
   getTierCopy,
   localizeKnownMessage,
-  PAYMENT_COPY,
 } from '../i18n/translations';
 
 interface BookingModalProps {
   concert: Concert | null;
   onClose: () => void;
   promos: Promo[];
+  paymentConfig?: PaymentConfig;
+  isSuperAdmin?: boolean;
+  adminName?: string;
   user: User | null;
   profile: UserProfile | null;
   onRequireAuth: () => void;
@@ -53,6 +73,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   concert,
   onClose,
   promos,
+  paymentConfig = DEFAULT_PAYMENT_CONFIG,
+  isSuperAdmin = false,
+  adminName = 'Super Admin',
   user,
   profile,
   onRequireAuth,
@@ -72,6 +95,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Super Admin inline editor for InstaPay & Vodafone Cash numbers
+  const [editingPaymentNumbers, setEditingPaymentNumbers] = useState(false);
+  const [instapayDraft, setInstapayDraft] = useState(paymentConfig.instapayNumber);
+  const [walletDraft, setWalletDraft] = useState(paymentConfig.walletNumber);
+  const [paymentEditorError, setPaymentEditorError] = useState('');
+  const [savingPaymentNumbers, setSavingPaymentNumbers] = useState(false);
+
   const concertId = concert?.id ?? null;
 
   useEffect(() => {
@@ -83,6 +113,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       setPaymentMethod('InstaPay');
       setTransferRef('');
       setErrorMsg('');
+      setEditingPaymentNumbers(false);
+      setPaymentEditorError('');
       setCustomerName(profile?.displayName || user?.displayName || '');
       setCustomerMobile(profile?.mobile || '');
       setCustomerEmail(profile?.email || user?.email || '');
@@ -126,8 +158,44 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const isVerifiedUser = isVerifiedFanAccount(user);
   const soldOut = concert.seatsLeft <= 0;
   const totals = calculateOrderTotals(concert, selectedTier, quantity, appliedPromo, promos);
-  const activePayment = PAYMENT_COPY[lang][paymentMethod] || PAYMENT_COPY[lang].InstaPay;
+  const activePayment = buildPaymentMethodCopy(paymentMethod, lang, paymentConfig);
   const selectedTierLabel = getTierCopy(selectedTier, lang).name;
+
+  const handleTogglePaymentEditor = () => {
+    if (!isSuperAdmin) return;
+    if (!editingPaymentNumbers) {
+      setInstapayDraft(paymentConfig.instapayNumber);
+      setWalletDraft(paymentConfig.walletNumber);
+      setPaymentEditorError('');
+      setEditingPaymentNumbers(true);
+    } else {
+      setEditingPaymentNumbers(false);
+      setPaymentEditorError('');
+    }
+  };
+
+  const handleSavePaymentNumbers = async () => {
+    if (!isSuperAdmin || savingPaymentNumbers) return;
+    setPaymentEditorError('');
+    const check = validatePaymentConfigInput({
+      instapayNumber: instapayDraft,
+      walletNumber: walletDraft,
+    });
+    if (!check.valid) {
+      setPaymentEditorError(lang === 'ar' ? check.errorAr : check.errorEn);
+      return;
+    }
+    setSavingPaymentNumbers(true);
+    try {
+      await adminSavePaymentConfig(check.normalized, adminName || user?.email || 'Super Admin');
+      setEditingPaymentNumbers(false);
+      onNotify(t.paymentNumbersUpdatedToast);
+    } catch (err) {
+      setPaymentEditorError(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
+    } finally {
+      setSavingPaymentNumbers(false);
+    }
+  };
 
   const handleApplyPromo = () => {
     setAppliedPromo(promoInput.trim().toUpperCase());
@@ -233,6 +301,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         transferRef: transferRef.trim().slice(0, 80),
         paymentStatus: 'Pending',
         checkedIn: false,
+        checkedInCount: 0,
         checkedInAt: '',
         approvedBy: '',
         approvalMethod: '',
@@ -440,7 +509,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               {/* Step 2: Quantity & Promo */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
                 <div className="sm:col-span-4 space-y-1.5">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <label
+                    htmlFor="booking-quantity"
+                    className="block text-xs font-semibold uppercase tracking-wider text-slate-400"
+                  >
                     {t.step2Quantity}
                   </label>
                   <div className="flex items-center justify-between bg-[#08090C] border border-white/12 rounded-lg px-2 py-1.5">
@@ -453,7 +525,23 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     >
                       <Minus className="w-4 h-4" />
                     </button>
-                    <span className="font-mono-num text-base font-bold text-white">{quantity}</span>
+                    <input
+                      id="booking-quantity"
+                      type="text"
+                      inputMode="numeric"
+                      dir="ltr"
+                      aria-label={t.step2Quantity}
+                      value={quantity}
+                      onChange={(e) => {
+                        const digits = toAsciiDigits(e.target.value).replace(/\D/g, '');
+                        if (!digits) return;
+                        const parsed = Number.parseInt(digits, 10);
+                        if (Number.isFinite(parsed)) {
+                          setQuantity(Math.max(1, Math.min(maxSelectable, parsed)));
+                        }
+                      }}
+                      className="w-12 text-center bg-transparent font-mono-num text-base font-bold text-white focus:outline-none"
+                    />
                     <button
                       type="button"
                       onClick={() => setQuantity((q) => Math.min(maxSelectable, q + 1))}
@@ -529,13 +617,120 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
               {/* Step 3: Payment Method */}
               <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  {t.step3PaymentMethod}
-                </p>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    {t.step3PaymentMethod}
+                  </p>
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={handleTogglePaymentEditor}
+                      aria-expanded={editingPaymentNumbers}
+                      aria-label={t.editPaymentNumbersAria}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-amber-400/35 bg-amber-400/10 hover:bg-amber-400/20 text-[11px] font-semibold text-amber-200 transition-colors"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      {editingPaymentNumbers ? t.cancelBtn : t.editPaymentNumbers}
+                    </button>
+                  )}
+                </div>
+
+                {isSuperAdmin && editingPaymentNumbers && (
+                  <div className="p-4 rounded-lg border border-amber-400/35 bg-amber-400/[0.06] space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-semibold text-amber-200 flex items-center gap-1.5">
+                          <Shield className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          {t.editPaymentPanelTitle}
+                        </p>
+                        <p className="text-[11px] text-slate-300 leading-relaxed">
+                          {t.editPaymentPanelSubtitle}
+                        </p>
+                      </div>
+                    </div>
+
+                    {paymentEditorError && (
+                      <div className="p-2.5 rounded-md border border-rose-500/35 bg-rose-500/10 text-xs text-rose-200 flex items-start gap-2">
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                        <span>{paymentEditorError}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label
+                          htmlFor="admin-instapay-number"
+                          className="block text-[11px] font-semibold text-slate-200 mb-1"
+                        >
+                          {t.instapayNumberLabel}
+                        </label>
+                        <input
+                          id="admin-instapay-number"
+                          type="text"
+                          dir="ltr"
+                          maxLength={80}
+                          value={instapayDraft}
+                          onChange={(e) => setInstapayDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void handleSavePaymentNumbers();
+                            }
+                          }}
+                          className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/15 text-xs text-white font-mono-num focus:outline-none focus:border-amber-300"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="admin-wallet-number"
+                          className="block text-[11px] font-semibold text-slate-200 mb-1"
+                        >
+                          {t.vodafoneCashNumberLabel}
+                        </label>
+                        <input
+                          id="admin-wallet-number"
+                          type="tel"
+                          dir="ltr"
+                          maxLength={30}
+                          value={walletDraft}
+                          onChange={(e) => setWalletDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void handleSavePaymentNumbers();
+                            }
+                          }}
+                          className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/15 text-xs text-white font-mono-num focus:outline-none focus:border-amber-300"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={handleTogglePaymentEditor}
+                        disabled={savingPaymentNumbers}
+                        className="px-3 py-1.5 rounded-md border border-white/15 text-xs font-medium text-slate-300 hover:text-white hover:bg-white/[0.05] disabled:opacity-50"
+                      >
+                        {t.cancelBtn}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSavePaymentNumbers()}
+                        disabled={savingPaymentNumbers}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-xs font-semibold text-[#08090C] transition-colors"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        {savingPaymentNumbers ? t.savingPaymentNumbers : t.savePaymentNumbers}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {PAYMENT_METHODS.map((pm) => {
                     const active = paymentMethod === pm.id;
-                    const pmCopy = PAYMENT_COPY[lang][pm.id];
+                    const pmCopy = buildPaymentMethodCopy(pm.id, lang, paymentConfig);
                     return (
                       <button
                         key={pm.id}

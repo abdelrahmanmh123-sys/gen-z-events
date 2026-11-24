@@ -691,6 +691,7 @@ export function mapGoogleFormResponsesToBookings(
       transferRef: resolvedOutlet,
       paymentStatus: defaultPaymentStatus,
       checkedIn: false,
+      checkedInCount: 0,
       checkedInAt: '',
       approvedBy: adminName.trim().slice(0, 100) || 'Admin',
       approvalMethod: 'Google Form',

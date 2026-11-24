@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PAYMENT_METHODS, PAYMENT_PHONE_NUMBER, TICKET_TIERS } from '../data/defaults';
 import {
+  buildFooterSubtitle,
+  buildPaymentMethodCopy,
   formatCurrencyEgp,
   getAdminRoleLabel,
   getDirection,
@@ -143,4 +145,31 @@ test('Arabic-Indic and Persian digits normalize cleanly in mobile & numeric pars
 
   assert.deepEqual(parseBoundedIntInput('٢٥٠', 1, 1000), { valid: true, value: 250 });
   assert.deepEqual(parseBoundedIntInput('٠', 1, 1000), { valid: false, value: 1 });
+});
+
+test('buildPaymentMethodCopy and buildFooterSubtitle interpolate live InstaPay & Vodafone Cash numbers in EN and AR', () => {
+  const customConfig = {
+    instapayNumber: 'genzevents@instapay',
+    walletNumber: '+201099887766',
+  };
+
+  const enInsta = buildPaymentMethodCopy('InstaPay', 'en', customConfig);
+  assert.equal(enInsta.destination, 'genzevents@instapay');
+  assert.ok(enInsta.instructions.includes('genzevents@instapay'));
+
+  const arWallet = buildPaymentMethodCopy('Mobile Wallets', 'ar', customConfig);
+  assert.equal(arWallet.destination, '+201099887766');
+  assert.ok(arWallet.instructions.includes('+201099887766'));
+
+  const enFooter = buildFooterSubtitle('en', customConfig);
+  assert.ok(enFooter.includes('genzevents@instapay'));
+  assert.ok(enFooter.includes('+201099887766'));
+
+  const arFooter = buildFooterSubtitle('ar', customConfig);
+  assert.ok(arFooter.includes('genzevents@instapay'));
+  assert.ok(arFooter.includes('+201099887766'));
+
+  // Falls back gracefully to default PAYMENT_PHONE_NUMBER when blank
+  const fallback = buildPaymentMethodCopy('InstaPay', 'en', { instapayNumber: '', walletNumber: '' });
+  assert.equal(fallback.destination, PAYMENT_PHONE_NUMBER);
 });

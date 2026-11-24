@@ -69,10 +69,6 @@
           "type": "object",
           "description": "Optional map of custom #RRGGBB hex accent colors for Silver, Gold, VIP, and Lounge tiers."
         },
-        "tierSeatsLeft": {
-          "type": "object",
-          "description": "Optional map of specific remaining tickets for Silver, Gold, VIP, and Lounge tiers."
-        },
         "totalSeats": {
           "type": "integer"
         },
@@ -198,13 +194,13 @@
         "checkedIn": {
           "type": "boolean"
         },
+        "checkedInCount": {
+          "type": "integer",
+          "description": "Number of individual ticket entries scanned/admitted so far (0 up to quantity). Optional on legacy records; defaults to quantity if checkedIn is true else 0."
+        },
         "checkedInAt": {
           "type": "string",
           "maxLength": 60
-        },
-        "scansUsed": {
-          "type": "integer",
-          "description": "Number of times this pass QR has been scanned for entry at gate (0 to quantity)."
         },
         "approvedBy": {
           "type": "string",
@@ -258,7 +254,6 @@
         "paymentStatus",
         "checkedIn",
         "checkedInAt",
-        "scansUsed",
         "approvedBy",
         "approvalMethod",
         "customerName",

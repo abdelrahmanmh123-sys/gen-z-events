@@ -20,7 +20,11 @@ import type {
   UserProfile,
   WaitlistEntry,
 } from '../types';
-import { emailToDocId } from '../utils/bookingLogic';
+import {
+  emailToDocId,
+  getBookingCheckedInCount,
+  PAYMENT_CONFIG_DOC_ID,
+} from '../utils/bookingLogic';
 
 export async function upsertUserProfile(
   uid: string,
@@ -127,49 +131,57 @@ export async function adminConfirmPayment(
   }
 }
 
-export async function adminToggleCheckIn(
+export interface CheckInScanResult {
+  checkedInCount: number;
+  quantity: number;
+  checkedIn: boolean;
+  checkedInAt: string;
+}
+
+export async function adminScanCheckIn(
   booking: Booking,
-  nextCheckedIn: boolean,
   approverName: string,
   method: string,
-): Promise<void> {
+): Promise<CheckInScanResult> {
   const path = `bookings/${booking.bookingCode}`;
   const bookingRef = doc(db, 'bookings', booking.bookingCode);
-  const timeStamp = nextCheckedIn
-    ? new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    : '';
+  const timeStamp = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   try {
-    if (nextCheckedIn) {
-      // Atomic transaction guarantees two entrance scanners can never admit the same pass twice
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(bookingRef);
-        if (!snap.exists()) {
-          throw new Error('Booking no longer exists.');
-        }
-        const fresh = snap.data() as Booking;
-        if (fresh.paymentStatus !== 'Paid') {
-          throw new Error('PAYMENT_NOT_PAID');
-        }
-        if (fresh.checkedIn) {
-          throw new Error(`ALREADY_CHECKED_IN|${fresh.checkedInAt || ''}|${fresh.approvedBy || ''}`);
-        }
-        tx.update(bookingRef, {
-          checkedIn: true,
-          checkedInAt: timeStamp,
-          approvedBy: approverName.slice(0, 100),
-          approvalMethod: method.slice(0, 40),
-          updatedAt: serverTimestamp(),
-        });
-      });
-    } else {
-      await updateDoc(bookingRef, {
-        checkedIn: false,
-        checkedInAt: '',
-        approvedBy: booking.approvedBy,
-        approvalMethod: booking.approvalMethod,
+    // Atomic transaction guarantees simultaneous entrance scanners increment 1/5 -> 2/5 -> ... -> 5/5 cleanly and never over-admit
+    const result = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(bookingRef);
+      if (!snap.exists()) {
+        throw new Error('Booking no longer exists.');
+      }
+      const fresh = snap.data() as Booking;
+      if (fresh.paymentStatus !== 'Paid') {
+        throw new Error('PAYMENT_NOT_PAID');
+      }
+      const total = Math.max(1, Math.floor(fresh.quantity || 1));
+      const currentCount = getBookingCheckedInCount(fresh);
+      if (currentCount >= total) {
+        throw new Error(
+          `ALREADY_CHECKED_IN|${currentCount}|${total}|${fresh.checkedInAt || ''}|${fresh.approvedBy || ''}`,
+        );
+      }
+      const nextCount = currentCount + 1;
+      const isNowFull = nextCount >= total;
+      tx.update(bookingRef, {
+        checkedIn: isNowFull,
+        checkedInCount: nextCount,
+        checkedInAt: timeStamp,
+        approvedBy: approverName.slice(0, 100),
+        approvalMethod: method.slice(0, 40),
         updatedAt: serverTimestamp(),
       });
-    }
+      return {
+        checkedInCount: nextCount,
+        quantity: total,
+        checkedIn: isNowFull,
+        checkedInAt: timeStamp,
+      };
+    });
+    return result;
   } catch (error) {
     if (
       error instanceof Error &&
@@ -181,27 +193,90 @@ export async function adminToggleCheckIn(
   }
 }
 
+export async function adminDecrementCheckIn(
+  booking: Booking,
+  approverName: string,
+  method: string,
+): Promise<CheckInScanResult> {
+  const path = `bookings/${booking.bookingCode}`;
+  const bookingRef = doc(db, 'bookings', booking.bookingCode);
+  try {
+    const result = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(bookingRef);
+      if (!snap.exists()) {
+        throw new Error('Booking no longer exists.');
+      }
+      const fresh = snap.data() as Booking;
+      if (fresh.paymentStatus !== 'Paid') {
+        throw new Error('PAYMENT_NOT_PAID');
+      }
+      const total = Math.max(1, Math.floor(fresh.quantity || 1));
+      const currentCount = getBookingCheckedInCount(fresh);
+      const nextCount = Math.max(0, currentCount - 1);
+      const nextAt = nextCount === 0 ? '' : fresh.checkedInAt || '';
+      tx.update(bookingRef, {
+        checkedIn: false,
+        checkedInCount: nextCount,
+        checkedInAt: nextAt,
+        approvedBy: (nextCount === 0 ? fresh.approvedBy : approverName || fresh.approvedBy).slice(0, 100),
+        approvalMethod: (nextCount === 0 ? fresh.approvalMethod : method || fresh.approvalMethod).slice(0, 40),
+        updatedAt: serverTimestamp(),
+      });
+      return {
+        checkedInCount: nextCount,
+        quantity: total,
+        checkedIn: false,
+        checkedInAt: nextAt,
+      };
+    });
+    return result;
+  } catch (error) {
+    if (error instanceof Error && error.message === 'PAYMENT_NOT_PAID') {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function adminToggleCheckIn(
+  booking: Booking,
+  nextCheckedIn: boolean,
+  approverName: string,
+  method: string,
+): Promise<CheckInScanResult> {
+  if (nextCheckedIn) {
+    return adminScanCheckIn(booking, approverName, method);
+  }
+  return adminDecrementCheckIn(booking, approverName, method);
+}
+
 export async function adminConfirmAndCheckIn(
   booking: Booking,
   approverName: string,
   method: string,
-): Promise<void> {
+): Promise<CheckInScanResult> {
   const bookingRef = doc(db, 'bookings', booking.bookingCode);
   const concertRef = doc(db, 'concerts', booking.concertId);
   const timeStamp = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   try {
-    await runTransaction(db, async (tx) => {
+    const result = await runTransaction(db, async (tx) => {
       const freshBookingSnap = await tx.get(bookingRef);
       if (!freshBookingSnap.exists()) {
         throw new Error('Booking no longer exists.');
       }
       const freshBooking = freshBookingSnap.data() as Booking;
       const freshConcertSnap = await tx.get(concertRef);
+      const total = Math.max(1, Math.floor(freshBooking.quantity || 1));
+      const currentCount = getBookingCheckedInCount(freshBooking);
+      const nextCount = Math.min(total, currentCount + 1);
+      const isNowFull = nextCount >= total;
+      const nextAt = timeStamp;
 
       tx.update(bookingRef, {
         paymentStatus: 'Paid',
-        checkedIn: true,
-        checkedInAt: freshBooking.checkedInAt || timeStamp,
+        checkedIn: isNowFull,
+        checkedInCount: nextCount,
+        checkedInAt: nextAt,
         approvedBy: approverName.slice(0, 100),
         approvalMethod: method.slice(0, 40),
         updatedAt: serverTimestamp(),
@@ -214,7 +289,15 @@ export async function adminConfirmAndCheckIn(
           updatedAt: serverTimestamp(),
         });
       }
+
+      return {
+        checkedInCount: nextCount,
+        quantity: total,
+        checkedIn: isNowFull,
+        checkedInAt: nextAt,
+      };
     });
+    return result;
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.bookingCode}`);
   }
@@ -582,5 +665,41 @@ export async function removeAdminSession(sessionId: string): Promise<void> {
     await deleteDoc(doc(db, 'adminSessions', sessionId));
   } catch {
     // non-fatal cleanup on logout or stale prune
+  }
+}
+
+export async function adminSavePaymentConfig(
+  payload: { instapayNumber: string; walletNumber: string },
+  updatedBy: string,
+): Promise<void> {
+  const id = PAYMENT_CONFIG_DOC_ID;
+  const path = `paymentConfig/${id}`;
+  const ref = doc(db, 'paymentConfig', id);
+  const cleanInstapay = payload.instapayNumber.trim().slice(0, 80);
+  const cleanWallet = payload.walletNumber.trim().slice(0, 30);
+  const cleanUpdatedBy = updatedBy.trim().slice(0, 120);
+  let exists = false;
+  try {
+    const existingSnap = await getDoc(ref);
+    exists = existingSnap.exists();
+    if (exists) {
+      await updateDoc(ref, {
+        instapayNumber: cleanInstapay,
+        walletNumber: cleanWallet,
+        updatedBy: cleanUpdatedBy,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(ref, {
+        id,
+        instapayNumber: cleanInstapay,
+        walletNumber: cleanWallet,
+        updatedBy: cleanUpdatedBy,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, exists ? OperationType.UPDATE : OperationType.CREATE, path);
   }
 }

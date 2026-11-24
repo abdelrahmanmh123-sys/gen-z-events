@@ -70,7 +70,7 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     );
     assert.match(
       rulesText,
-      /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\[\s*'checkedIn',\s*'checkedInAt',\s*'scansUsed',\s*'approvedBy',\s*'approvalMethod',\s*'updatedAt'\s*\]\)/,
+      /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\[\s*'checkedIn',\s*'checkedInCount',\s*'checkedInAt',\s*'approvedBy',\s*'approvalMethod',\s*'updatedAt'\s*\]\)/,
     );
     // Gate Staff offline create strictly scoped to offline-sale / offline_box_office + Offline
     assert.match(
@@ -80,7 +80,7 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     // Gate Staff concert update strictly scoped to seatsLeft decrement
     assert.match(
       rulesText,
-      /isGateStaff\(\)\s*&&\s*incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\['seatsLeft',\s*'tierSeatsLeft',\s*'updatedAt'\]\)\s*&&\s*incoming\(\)\.seatsLeft\s*<=\s*existing\(\)\.seatsLeft/,
+      /isGateStaff\(\)\s*&&\s*incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\['seatsLeft',\s*'updatedAt'\]\)\s*&&\s*incoming\(\)\.seatsLeft\s*<=\s*existing\(\)\.seatsLeft/,
     );
     // Gate Staff cannot list users, admins, or adminSessions
     assert.match(rulesText, /match\s+\/users\/\{userId\}[\s\S]*?allow\s+list:\s*if\s+isSuperAdmin\(\);/);
@@ -108,7 +108,6 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.match(rulesText, /incoming\(\)\.customerEmail\.size\(\)\s*>=\s*3/);
     assert.match(rulesText, /incoming\(\)\.paymentStatus\s*==\s*'Pending'/);
     assert.match(rulesText, /incoming\(\)\.checkedIn\s*==\s*false/);
-    assert.match(rulesText, /incoming\(\)\.scansUsed\s*==\s*0/);
     assert.match(rulesText, /incoming\(\)\.approvedBy\s*==\s*''/);
     assert.match(rulesText, /incoming\(\)\.approvalMethod\s*==\s*''/);
     assert.match(rulesText, /isValidFanPricing\(incoming\(\)\)/);
@@ -164,8 +163,18 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.doesNotMatch(rulesText, /allow\s+(read|get|list):\s*if\s+isVerified\(\);/);
   });
 
-  it('blocks fan deletion of paid or checked-in bookings', () => {
-    assert.match(rulesText, /existing\(\)\.paymentStatus\s*==\s*'Pending'\s*&&\s*existing\(\)\.checkedIn\s*==\s*false/);
+  it('blocks fan deletion of paid or checked-in bookings and enforces checkedInCount bounds', () => {
+    assert.match(
+      rulesText,
+      /existing\(\)\.paymentStatus\s*==\s*'Pending'\s*&&\s*existing\(\)\.checkedIn\s*==\s*false\s*&&\s*\(!\('checkedInCount' in existing\(\)\)\s*\|\|\s*existing\(\)\.checkedInCount\s*==\s*0\)/,
+    );
+    const bookingValidator = extractFunctionBody('isValidBooking');
+    assert.match(bookingValidator, /'checkedInCount'/);
+    assert.match(bookingValidator, /data\.checkedInCount\s+is\s+int/);
+    assert.match(bookingValidator, /data\.checkedInCount\s*>=\s*0/);
+    assert.match(bookingValidator, /data\.checkedInCount\s*<=\s*data\.quantity/);
+    assert.match(bookingValidator, /data\.checkedIn\s*==\s*\(data\.checkedInCount\s*>=\s*data\.quantity\)/);
+    assert.match(rulesText, /!\('checkedInCount' in incoming\(\)\)\s*\|\|\s*incoming\(\)\.checkedInCount\s*==\s*0/);
   });
 
   it('enforces server timestamp integrity (request.time) and immutable fields', () => {
@@ -194,12 +203,6 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     const concertFn = extractFunctionBody('isValidConcert');
     assert.match(concertFn, /'tierColors'/);
     assert.match(concertFn, /!\('tierColors' in data\)\s*\|\|\s*isValidTierColors\(data\.tierColors\)/);
-
-    const tierSeatsFn = extractFunctionBody('isValidTierSeatsLeft');
-    assert.match(tierSeatsFn, /seats\.keys\(\)\.hasAll\(\['Silver',\s*'Gold',\s*'VIP',\s*'Lounge'\]\)/);
-    assert.match(tierSeatsFn, /seats\.keys\(\)\.hasOnly\(\['Silver',\s*'Gold',\s*'VIP',\s*'Lounge'\]\)/);
-    assert.match(concertFn, /'tierSeatsLeft'/);
-    assert.match(concertFn, /!\('tierSeatsLeft' in data\)\s*\|\|\s*isValidTierSeatsLeft\(data\.tierSeatsLeft\)/);
   });
 
   it('keeps legacy /updates and /settings (seed) collections permanently removed under default-deny', () => {

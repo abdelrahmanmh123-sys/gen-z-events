@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { Booking, Concert } from '../types';
-import { getTierUnitPrice, sanitizeSpreadsheetCell } from './bookingLogic';
+import { getBookingCheckedInCount, getTierUnitPrice, sanitizeSpreadsheetCell } from './bookingLogic';
 
 export interface ParsedSpreadsheetFile {
   sheetName: string;
@@ -103,7 +103,12 @@ export function exportOfflineBookingsXlsx(bookings: Booking[], filename?: string
     'Total EGP': b.totalEgp,
     'Outlet / Ref': sanitizeSpreadsheetCell(b.transferRef),
     Status: sanitizeSpreadsheetCell(b.paymentStatus),
-    'Checked In': b.checkedIn ? 'Yes' : 'No',
+    'Checked In': (() => {
+      const total = Math.max(1, Math.floor(b.quantity || 1));
+      const count = getBookingCheckedInCount(b);
+      if (total > 1) return `${count}/${total}`;
+      return count > 0 ? 'Yes' : 'No';
+    })(),
     'Logged By': sanitizeSpreadsheetCell(b.approvedBy || ''),
     Source: sanitizeSpreadsheetCell(b.approvalMethod || 'Offline'),
   }));

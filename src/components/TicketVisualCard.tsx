@@ -80,9 +80,9 @@ export const TicketVisualCard: React.FC<TicketVisualCardProps> = ({
         </div>
       )}
 
-      {/* Seamless stub replacement covering ZONE / ROW / SEAT / BARCODE with unique QR */}
+      {/* Official Digital QR Seal mounted cleanly over the physical OFFICIAL STAMP circle */}
       <div
-        className={`absolute flex flex-col items-center justify-between pt-[1.4%] pb-[1.2%] px-[1.2%] transition-opacity duration-200 ${
+        className={`absolute flex flex-col items-center justify-between p-[1%] rounded-[9%] border shadow-[0_10px_28px_rgba(0,0,0,0.72)] transition-opacity duration-200 ${
           showStubBackground ? 'opacity-100' : 'opacity-0'
         }`}
         style={{
@@ -90,36 +90,18 @@ export const TicketVisualCard: React.FC<TicketVisualCardProps> = ({
           width: `${TICKET_STUB_SLOT.patchWidth * 100}%`,
           top: `${TICKET_STUB_SLOT.patchTop * 100}%`,
           height: `${TICKET_STUB_SLOT.patchHeight * 100}%`,
+          background: `linear-gradient(180deg, ${design.stubTop} 0%, #090B10 55%, ${design.stubBottom} 100%)`,
+          borderColor: design.accentHex,
         }}
       >
-        {/* Radial-spotlight cover matching the PNG stub vignette with feathered outer perimeter */}
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: `radial-gradient(ellipse 68% 54% at 50% 0%, ${design.stubGlow} 0%, ${design.stubTop} 36%, ${design.stubMid} 72%, ${design.stubBottom} 100%)`,
-            WebkitMaskImage:
-              'linear-gradient(to right, transparent 0%, black 4.2%, black 95.8%, transparent 100%)',
-            maskImage:
-              'linear-gradient(to right, transparent 0%, black 4.2%, black 95.8%, transparent 100%)',
-          }}
-        />
-        <div
-          aria-hidden="true"
-          className="absolute inset-x-0 bottom-0 h-[36%] pointer-events-none"
-          style={{
-            background: `linear-gradient(180deg, transparent 0%, ${design.stubBottom} 85%)`,
-          }}
-        />
-
-        <div className="relative z-10 flex flex-col items-center justify-between w-full h-full">
+        <div className="relative z-10 flex flex-col items-center justify-between w-full h-full py-[2%]">
           {isPaid && qrDataUrl ? (
             <button
               type="button"
               onClick={onEnlargeQr}
               aria-label={`${t.enlargeQrAria} (${booking.bookingCode})`}
               title={t.tapQrToEnlarge}
-              className="group relative h-[84%] aspect-square rounded-[6%] bg-white p-[2.6%] shadow-[0_8px_24px_rgba(0,0,0,0.55)] ring-1 ring-white/25 hover:ring-2 hover:ring-white transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="group relative w-[88%] aspect-square rounded-[7%] bg-white p-[3.2%] shadow-[0_6px_18px_rgba(0,0,0,0.55)] ring-1 ring-white/25 hover:ring-2 hover:ring-white transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <img
                 src={qrDataUrl}
@@ -134,16 +116,16 @@ export const TicketVisualCard: React.FC<TicketVisualCardProps> = ({
               </span>
             </button>
           ) : (
-            <div className="h-[83%] aspect-square rounded-[6%] border border-amber-400/45 bg-black/60 flex flex-col items-center justify-center p-1 text-center text-amber-300 gap-0.5">
-              <Lock className="w-3.5 h-3.5 sm:w-5 sm:h-5 shrink-0" />
-              <span className="text-[7px] sm:text-[10px] font-bold uppercase leading-tight">
+            <div className="w-[88%] aspect-square rounded-[7%] border border-amber-400/45 bg-black/70 flex flex-col items-center justify-center p-1 text-center text-amber-300 gap-0.5">
+              <Lock className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+              <span className="text-[6px] sm:text-[9px] font-bold uppercase leading-tight">
                 {t.qrLocked}
               </span>
             </div>
           )}
 
           <p
-            className="font-mono-num text-[8px] sm:text-[11px] md:text-[13px] font-bold text-white leading-none tracking-wider truncate max-w-full drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+            className="font-mono-num text-[7px] sm:text-[10px] md:text-[11px] font-bold text-white leading-none tracking-wider truncate max-w-full drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]"
             dir="ltr"
           >
             {booking.bookingCode}

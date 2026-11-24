@@ -1,6 +1,18 @@
-import type { AdminRole, AdminSession, Booking, Concert, Promo, SortOption, TierId, TierPrices } from '../types';
+import { PAYMENT_PHONE_NUMBER } from '../data/defaults';
+import type {
+  AdminRole,
+  AdminSession,
+  Booking,
+  Concert,
+  PaymentConfig,
+  Promo,
+  SortOption,
+  TierColors,
+  TierId,
+  TierPrices,
+} from '../types';
 
-export const MAX_QTY_PER_ORDER = 6;
+export const MAX_QTY_PER_ORDER = 20;
 export const MAX_POSTER_DATA_URL_LENGTH = 390000;
 export const ADMIN_SESSION_TTL_MS = 15 * 60 * 1000;
 
@@ -368,7 +380,12 @@ export function buildAttendeesCsv(bookings: Booking[]): string {
       b.paymentMethod,
       b.transferRef,
       b.paymentStatus,
-      b.checkedIn ? 'Yes' : 'No',
+      (() => {
+        const total = Math.max(1, Math.floor(b.quantity || 1));
+        const count = getBookingCheckedInCount(b);
+        if (total > 1) return count > 0 ? `${count}/${total}` : `0/${total}`;
+        return count > 0 ? 'Yes' : 'No';
+      })(),
       b.checkedInAt || '-',
       b.approvedBy || '-',
       b.approvalMethod || '-',
@@ -414,12 +431,42 @@ export function buildCalendarIcs(booking: Booking, concert?: Concert): string {
   ].join('\r\n');
 }
 
+export function getBookingCheckedInCount(
+  booking: Pick<Booking, 'quantity' | 'checkedIn' | 'checkedInCount'>,
+): number {
+  const total = Math.max(1, Math.floor(Number(booking.quantity) || 1));
+  if (typeof booking.checkedInCount === 'number' && Number.isFinite(booking.checkedInCount)) {
+    return Math.max(0, Math.min(total, Math.floor(booking.checkedInCount)));
+  }
+  return booking.checkedIn ? total : 0;
+}
+
+export function getBookingRemainingEntries(
+  booking: Pick<Booking, 'quantity' | 'checkedIn' | 'checkedInCount'>,
+): number {
+  const total = Math.max(1, Math.floor(Number(booking.quantity) || 1));
+  return Math.max(0, total - getBookingCheckedInCount(booking));
+}
+
+export function isBookingFullyCheckedIn(
+  booking: Pick<Booking, 'quantity' | 'checkedIn' | 'checkedInCount'>,
+): boolean {
+  const total = Math.max(1, Math.floor(Number(booking.quantity) || 1));
+  return getBookingCheckedInCount(booking) >= total;
+}
+
+export function formatCheckInProgress(checkedInCount: number, quantity: number): string {
+  const total = Math.max(1, Math.floor(Number(quantity) || 1));
+  const count = Math.max(0, Math.min(total, Math.floor(Number(checkedInCount) || 0)));
+  return `(${count}/${total})`;
+}
+
 export function computeAdminKpis(concerts: Concert[], bookings: Booking[]) {
   const liveEvents = concerts.length;
   const seatsRemaining = concerts.reduce((sum, c) => sum + Math.max(0, c.seatsLeft), 0);
   const paidBookings = bookings.filter((b) => b.paymentStatus === 'Paid');
   const pendingPayments = bookings.filter((b) => b.paymentStatus === 'Pending').length;
-  const checkedIn = bookings.filter((b) => b.checkedIn).reduce((sum, b) => sum + b.quantity, 0);
+  const checkedIn = bookings.reduce((sum, b) => sum + getBookingCheckedInCount(b), 0);
   const ticketsSold = paidBookings.reduce((sum, b) => sum + b.quantity, 0);
   const totalRevenueEgp = paidBookings.reduce((sum, b) => sum + b.totalEgp, 0);
   return {
@@ -1353,6 +1400,7 @@ export function parseOfflineTicketRows(
       transferRef: safeTransferRef,
       paymentStatus,
       checkedIn,
+      checkedInCount: checkedIn ? qtyNum : 0,
       checkedInAt: checkedIn ? 'Excel Import' : '',
       approvedBy: adminName.trim().slice(0, 100) || 'Admin',
       approvalMethod: 'Excel Import',
@@ -1376,3 +1424,338 @@ export function parseOfflineTicketRows(
     totalRevenueEgp,
   };
 }
+
+export interface ConcertEditDraft {
+  title: string;
+  artist: string;
+  venue: string;
+  genre: string;
+  isoDate: string;
+  isoTime: string;
+  totalSeats: string;
+  seatsLeft: string;
+  silver: string;
+  gold: string;
+  vip: string;
+  lounge: string;
+  useCustomColors: boolean;
+  hexDrafts: TierColors;
+  posterUrl: string;
+  description: string;
+}
+
+export type ConcertEditValidationResult =
+  | {
+      valid: true;
+      concert: Omit<Concert, 'createdAt' | 'updatedAt'>;
+    }
+  | {
+      valid: false;
+      errorEn: string;
+      errorAr: string;
+    };
+
+/**
+ * Adjusts seatsLeft when an organizer changes a concert's total capacity so
+ * previously booked/used seats stay accounted for and 0 <= seatsLeft <= nextTotalSeats.
+ */
+export function computeAdjustedSeatsLeft(
+  prevTotalSeats: number,
+  prevSeatsLeft: number,
+  nextTotalSeats: number,
+): number {
+  const safePrevTotal = Math.max(0, Math.round(prevTotalSeats));
+  const safePrevLeft = Math.max(0, Math.min(safePrevTotal, Math.round(prevSeatsLeft)));
+  const safeNextTotal = Math.max(0, Math.round(nextTotalSeats));
+  const usedSeats = Math.max(0, safePrevTotal - safePrevLeft);
+  return Math.max(0, Math.min(safeNextTotal, safeNextTotal - usedSeats));
+}
+
+function isValidCalendarIsoDate(isoDate: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return (
+    dt.getUTCFullYear() === year &&
+    dt.getUTCMonth() === month - 1 &&
+    dt.getUTCDate() === day
+  );
+}
+
+function isValidClockIsoTime(isoTime: string): boolean {
+  const m = /^(\d{2}):(\d{2})$/.exec(isoTime);
+  if (!m) return false;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  return hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59;
+}
+
+export function validateAndBuildConcertEditPayload(
+  original: Concert,
+  draft: ConcertEditDraft,
+): ConcertEditValidationResult {
+  const cleanTitle = draft.title.trim();
+  const cleanArtist = draft.artist.trim();
+  const cleanVenue = draft.venue.trim();
+  const cleanGenre = draft.genre.trim();
+  const cleanDescription = draft.description.trim();
+
+  if (
+    cleanTitle.length < 2 ||
+    cleanArtist.length < 2 ||
+    cleanVenue.length < 2 ||
+    cleanGenre.length < 2 ||
+    cleanDescription.length < 4
+  ) {
+    return {
+      valid: false,
+      errorEn: 'Please complete title, artist, venue, genre (2+ chars), and description (4+ chars).',
+      errorAr: 'يرجى استكمال اسم الحفل والفنان والمكان والتصنيف (حرفان على الأقل) والوصف (٤ أحرف على الأقل).',
+    };
+  }
+
+  const cleanIsoDate = draft.isoDate.trim();
+  const rawIsoTime = draft.isoTime.trim();
+  const cleanIsoTime = /^\d{2}:\d{2}:\d{2}$/.test(rawIsoTime) ? rawIsoTime.slice(0, 5) : rawIsoTime;
+  if (!isValidCalendarIsoDate(cleanIsoDate) || !isValidClockIsoTime(cleanIsoTime)) {
+    return {
+      valid: false,
+      errorEn: 'Please pick a valid event date and start time.',
+      errorAr: 'يرجى اختيار تاريخ ووقت بداية صحيحين للحفل.',
+    };
+  }
+
+  const totalParsed = parseBoundedIntInput(draft.totalSeats, 1, 50000);
+  if (!totalParsed.valid) {
+    return {
+      valid: false,
+      errorEn: 'Total capacity must be a whole number between 1 and 50,000.',
+      errorAr: 'يجب أن تكون السعة الإجمالية عدداً صحيحاً بين 1 و 50,000.',
+    };
+  }
+
+  const seatsLeftParsed = parseBoundedIntInput(draft.seatsLeft, 0, totalParsed.value);
+  if (!seatsLeftParsed.valid) {
+    return {
+      valid: false,
+      errorEn: `Seats left must be a whole number between 0 and ${totalParsed.value.toLocaleString('en-US')}.`,
+      errorAr: `يجب أن تكون المقاعد المتبقية عدداً صحيحاً بين 0 و ${totalParsed.value.toLocaleString('en-US')}.`,
+    };
+  }
+
+  const silverParsed = parseBoundedIntInput(draft.silver, 0, 100000);
+  const goldParsed = parseBoundedIntInput(draft.gold, 0, 100000);
+  const vipParsed = parseBoundedIntInput(draft.vip, 0, 100000);
+  const loungeParsed = parseBoundedIntInput(draft.lounge, 0, 100000);
+  if (!silverParsed.valid || !goldParsed.valid || !vipParsed.valid || !loungeParsed.valid) {
+    return {
+      valid: false,
+      errorEn: 'All tier prices must be valid whole numbers between 0 and 100,000 EGP.',
+      errorAr: 'يجب أن تكون أسعار جميع الفئات أعداداً صحيحة بين 0 و 100,000 ج.م.',
+    };
+  }
+
+  const trimmedPoster = draft.posterUrl.trim();
+  if (trimmedPoster.length > MAX_POSTER_DATA_URL_LENGTH) {
+    return {
+      valid: false,
+      errorEn: 'Poster image or URL is too large. Please upload a smaller image or shorter HTTPS link.',
+      errorAr: 'حجم صورة البوستر أو الرابط كبير جداً. يرجى رفع صورة أصغر أو رابط HTTPS أقصر.',
+    };
+  }
+  if (trimmedPoster.length > 0 && !isSafeImageUrl(trimmedPoster)) {
+    return {
+      valid: false,
+      errorEn: 'Poster URL must start with https:// or use Upload Image (JPG/PNG/WebP).',
+      errorAr: 'يجب أن يبدأ رابط البوستر بـ https:// أو استخدام زر رفع صورة (JPG/PNG/WebP).',
+    };
+  }
+
+  let resolvedTierColors: TierColors | undefined;
+  if (draft.useCustomColors) {
+    const colorCheck = validateTierColors(draft.hexDrafts);
+    if (!colorCheck.valid || !colorCheck.normalized) {
+      return {
+        valid: false,
+        errorEn: colorCheck.error || 'Please fix invalid hex colors before saving.',
+        errorAr: 'يرجى تصحيح أكواد الألوان (Hex) غير الصالحة قبل الحفظ.',
+      };
+    }
+    resolvedTierColors = colorCheck.normalized;
+  }
+
+  const formatted = formatDateTimeDisplay(cleanIsoDate, cleanIsoTime);
+
+  return {
+    valid: true,
+    concert: {
+      id: original.id,
+      title: cleanTitle.slice(0, 120),
+      artist: cleanArtist.slice(0, 120),
+      venue: cleanVenue.slice(0, 140),
+      genre: cleanGenre.slice(0, 60),
+      isoDate: cleanIsoDate,
+      isoTime: cleanIsoTime,
+      date: formatted.date.slice(0, 40),
+      time: formatted.time.slice(0, 20),
+      doors: formatted.doors.slice(0, 20),
+      priceEgp: silverParsed.value,
+      tierPrices: {
+        Silver: silverParsed.value,
+        Gold: goldParsed.value,
+        VIP: vipParsed.value,
+        Lounge: loungeParsed.value,
+      },
+      tierColors: resolvedTierColors,
+      totalSeats: totalParsed.value,
+      seatsLeft: seatsLeftParsed.value,
+      description: cleanDescription.slice(0, 800),
+      posterUrl: trimmedPoster,
+    },
+  };
+}
+
+/**
+ * Returns a booking merged with the latest live concert title, date, time, and venue
+ * so edits published by organizers immediately reflect on fans' booked tickets and E-Passes.
+ */
+export function resolveBookingConcertDetails(booking: Booking, concert?: Concert | null): Booking {
+  if (!concert) return booking;
+  return {
+    ...booking,
+    concertTitle: concert.title || booking.concertTitle,
+    concertDate: concert.date || booking.concertDate,
+    concertTime: concert.time || booking.concertTime,
+    concertVenue: concert.venue || booking.concertVenue,
+  };
+}
+
+// =============================================================================
+// PAYMENT NUMBERS CONFIGURATION (INSTAPAY & VODAFONE CASH / MOBILE WALLETS)
+// =============================================================================
+
+export const PAYMENT_CONFIG_DOC_ID = 'default';
+
+export const DEFAULT_PAYMENT_CONFIG: PaymentConfig = {
+  id: PAYMENT_CONFIG_DOC_ID,
+  instapayNumber: PAYMENT_PHONE_NUMBER,
+  walletNumber: PAYMENT_PHONE_NUMBER,
+  updatedBy: '',
+};
+
+export function resolvePaymentConfig(raw?: Partial<PaymentConfig> | null): PaymentConfig {
+  const instapay =
+    typeof raw?.instapayNumber === 'string' && raw.instapayNumber.trim().length > 0
+      ? raw.instapayNumber.trim()
+      : PAYMENT_PHONE_NUMBER;
+  const wallet =
+    typeof raw?.walletNumber === 'string' && raw.walletNumber.trim().length > 0
+      ? raw.walletNumber.trim()
+      : PAYMENT_PHONE_NUMBER;
+  const resolved: PaymentConfig = {
+    id: PAYMENT_CONFIG_DOC_ID,
+    instapayNumber: instapay,
+    walletNumber: wallet,
+    updatedBy: typeof raw?.updatedBy === 'string' ? raw.updatedBy : '',
+  };
+  if (raw?.createdAt !== undefined) {
+    resolved.createdAt = raw.createdAt;
+  }
+  if (raw?.updatedAt !== undefined) {
+    resolved.updatedAt = raw.updatedAt;
+  }
+  return resolved;
+}
+
+function normalizePaymentPhonePreservePrefix(raw: string): { valid: boolean; formatted: string } {
+  const compact = toAsciiDigits(raw).trim().replace(/[\s\-()]/g, '');
+  const mobileCheck = validateEgyptianMobile(compact, true);
+  if (!mobileCheck.valid) {
+    return { valid: false, formatted: compact };
+  }
+  if (compact.startsWith('+20')) {
+    return { valid: true, formatted: `+20${mobileCheck.normalized.slice(1)}` };
+  }
+  return { valid: true, formatted: mobileCheck.normalized };
+}
+
+export type PaymentConfigValidationResult =
+  | {
+      valid: true;
+      normalized: {
+        instapayNumber: string;
+        walletNumber: string;
+      };
+    }
+  | {
+      valid: false;
+      errorEn: string;
+      errorAr: string;
+    };
+
+export function validatePaymentConfigInput(input: {
+  instapayNumber: string;
+  walletNumber: string;
+}): PaymentConfigValidationResult {
+  const rawInsta = toAsciiDigits(input.instapayNumber).trim().replace(/\s+/g, '');
+  const rawWallet = toAsciiDigits(input.walletNumber).trim();
+
+  if (rawInsta.length < 5 || rawInsta.length > 80) {
+    return {
+      valid: false,
+      errorEn:
+        'Enter a valid InstaPay mobile number (e.g. +201040206700 or 01040206700) or IPA address (e.g. name@instapay).',
+      errorAr:
+        'يرجى إدخال رقم موبايل صحيح لإنستاباي (مثل 01040206700 أو +201040206700) أو عنوان IPA (مثل name@instapay).',
+    };
+  }
+
+  let normalizedInsta = '';
+  if (rawInsta.includes('@')) {
+    if (!/^[a-zA-Z0-9._\-]{2,50}@[a-zA-Z0-9.\-]{2,28}$/.test(rawInsta)) {
+      return {
+        valid: false,
+        errorEn: 'Enter a valid InstaPay IPA address (e.g. genzevents@instapay).',
+        errorAr: 'يرجى إدخال عنوان إنستاباي (IPA) صحيح (مثل genzevents@instapay).',
+      };
+    }
+    normalizedInsta = rawInsta;
+  } else {
+    const instaPhone = normalizePaymentPhonePreservePrefix(rawInsta);
+    if (!instaPhone.valid) {
+      return {
+        valid: false,
+        errorEn:
+          'Enter a valid Egyptian mobile number for InstaPay (010, 011, 012, or 015) or an IPA address like name@instapay.',
+        errorAr:
+          'يرجى إدخال رقم موبايل مصري صحيح لإنستاباي (يبدأ بـ 010 أو 011 أو 012 أو 015) أو عنوان IPA مثل name@instapay.',
+      };
+    }
+    normalizedInsta = instaPhone.formatted;
+  }
+
+  const walletPhone = normalizePaymentPhonePreservePrefix(rawWallet);
+  if (!walletPhone.valid || walletPhone.formatted.length < 6 || walletPhone.formatted.length > 30) {
+    return {
+      valid: false,
+      errorEn:
+        'Enter a valid 11-digit Egyptian mobile number for Vodafone Cash / Mobile Wallets (010, 011, 012, or 015).',
+      errorAr:
+        'يرجى إدخال رقم موبايل مصري صحيح لفودافون كاش / المحافظ الإلكترونية (١١ رقماً يبدأ بـ 010 أو 011 أو 012 أو 015).',
+    };
+  }
+
+  return {
+    valid: true,
+    normalized: {
+      instapayNumber: normalizedInsta,
+      walletNumber: walletPhone.formatted,
+    },
+  };
+}
+
+

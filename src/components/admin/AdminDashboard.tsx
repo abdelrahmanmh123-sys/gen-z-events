@@ -12,7 +12,11 @@ import {
 } from 'recharts';
 import { TICKET_TIERS } from '../../data/defaults';
 import type { Booking, Concert } from '../../types';
-import { getTierColorHex } from '../../utils/bookingLogic';
+import {
+  formatCheckInProgress,
+  getBookingCheckedInCount,
+  getTierColorHex,
+} from '../../utils/bookingLogic';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { formatCurrencyEgp, getTierCopy } from '../../i18n/translations';
 
@@ -72,7 +76,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const recentApprovals = useMemo(() => {
     return bookings
-      .filter((b) => b.approvedBy || b.checkedIn)
+      .filter((b) => b.approvedBy || getBookingCheckedInCount(b) > 0)
       .slice(0, 12);
   }, [bookings]);
 
@@ -279,7 +283,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <td className="px-4 py-3 text-slate-200">{b.approvedBy || '—'}</td>
                     <td className="px-4 py-3 text-emerald-400">{b.approvalMethod || t.verifiedWord}</td>
                     <td className="px-4 py-3 text-end font-mono-num text-slate-400">
-                      {b.checkedInAt || t.paidOnly}
+                      {(() => {
+                        const total = Math.max(1, Math.floor(b.quantity || 1));
+                        const count = getBookingCheckedInCount(b);
+                        const progress = total > 1 && count > 0 ? ` ${formatCheckInProgress(count, total)}` : '';
+                        return (
+                          <>
+                            {b.checkedInAt || t.paidOnly}
+                            {progress && (
+                              <span className="text-emerald-300 font-semibold" dir="ltr">
+                                {progress}
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}

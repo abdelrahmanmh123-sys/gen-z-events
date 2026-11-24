@@ -16,12 +16,15 @@ import { formatFriendlyFirebaseError } from '../../firebase';
 import {
   adminBulkImportOfflineBookings,
   adminCreateOfflineBooking,
+  adminDecrementCheckIn,
   adminDeleteBooking,
-  adminToggleCheckIn,
+  adminScanCheckIn,
 } from '../../services/firestoreService';
 import type { Booking, Concert, TierId } from '../../types';
 import {
+  formatCheckInProgress,
   generateBookingCode,
+  getBookingCheckedInCount,
   getTierColorHex,
   getTierUnitPrice,
   hexToRgba,
@@ -141,7 +144,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
       orders: offlineBookings.length,
       ticketsSold: paid.reduce((sum, b) => sum + b.quantity, 0),
       revenueEgp: paid.reduce((sum, b) => sum + b.totalEgp, 0),
-      checkedIn: offlineBookings.filter((b) => b.checkedIn).reduce((sum, b) => sum + b.quantity, 0),
+      checkedIn: offlineBookings.reduce((sum, b) => sum + getBookingCheckedInCount(b), 0),
     };
   }, [offlineBookings]);
 
@@ -298,6 +301,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
           transferRef: safeTransferRef,
           paymentStatus: 'Paid',
           checkedIn: manualCheckedIn,
+          checkedInCount: manualCheckedIn ? qtyParsed.value : 0,
           checkedInAt: manualCheckedIn
             ? new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
             : '',
@@ -328,20 +332,29 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
     }
   };
 
-  const handleToggleCheckIn = async (b: Booking) => {
+  const handleRosterCheckInAction = async (b: Booking, direction: 'admit' | 'undo') => {
     if (b.paymentStatus !== 'Paid') return;
     setBusyCode(b.bookingCode);
     try {
-      await adminToggleCheckIn(b, !b.checkedIn, adminName, 'Offline Roster');
-      onNotify(
-        b.checkedIn
-          ? isAr
-            ? `تم التراجع عن تسجيل دخول ${b.bookingCode}.`
-            : `Reverted check-in for ${b.bookingCode}.`
-          : isAr
-            ? `تم تسجيل دخول ${b.bookingCode}.`
-            : `Checked in ${b.bookingCode}.`,
-      );
+      if (direction === 'admit') {
+        const res = await adminScanCheckIn(b, adminName, 'Offline Roster');
+        const counterSuffix =
+          res.quantity > 1 ? ` ${formatCheckInProgress(res.checkedInCount, res.quantity)}` : '';
+        onNotify(
+          isAr
+            ? `تم تسجيل دخول ${b.bookingCode}${counterSuffix}.`
+            : `Checked in ${b.bookingCode}${counterSuffix}.`,
+        );
+      } else {
+        const res = await adminDecrementCheckIn(b, adminName, 'Offline Roster');
+        const counterSuffix =
+          res.quantity > 1 ? ` ${formatCheckInProgress(res.checkedInCount, res.quantity)}` : '';
+        onNotify(
+          isAr
+            ? `تم التراجع عن تسجيل دخول ${b.bookingCode}${counterSuffix}.`
+            : `Reverted check-in for ${b.bookingCode}${counterSuffix}.`,
+        );
+      }
     } catch (err) {
       onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
     } finally {
@@ -953,20 +966,51 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
                             <span className="px-2.5 py-1.5 rounded-md border border-amber-400/25 bg-amber-400/5 text-[11px] font-medium text-amber-200/80">
                               {t.awaitingSuperAdmin}
                             </span>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={busyCode === b.bookingCode}
-                              onClick={() => void handleToggleCheckIn(b)}
-                              className={`px-2.5 py-1.5 rounded-md font-semibold border ${
-                                b.checkedIn
-                                  ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                                  : 'bg-white/[0.06] border-white/15 text-white hover:bg-white/[0.12]'
-                              }`}
-                            >
-                              {b.checkedIn ? t.statusCheckedIn : t.checkInBtn}
-                            </button>
-                          )}
+                          ) : (() => {
+                            const total = Math.max(1, Math.floor(b.quantity || 1));
+                            const scanned = getBookingCheckedInCount(b);
+                            const isFull = scanned >= total;
+                            const isPartial = scanned > 0 && !isFull;
+                            const counter = total > 1 ? ` ${formatCheckInProgress(scanned, total)}` : '';
+                            return (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={busyCode === b.bookingCode}
+                                  onClick={() =>
+                                    void handleRosterCheckInAction(b, isFull ? 'undo' : 'admit')
+                                  }
+                                  className={`px-2.5 py-1.5 rounded-md font-semibold border ${
+                                    isFull
+                                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                                      : isPartial
+                                        ? 'bg-cyan-500/15 border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/25'
+                                        : 'bg-white/[0.06] border-white/15 text-white hover:bg-white/[0.12]'
+                                  }`}
+                                >
+                                  {isFull ? t.statusCheckedIn : t.checkInBtn}
+                                  {counter && (
+                                    <span className="font-mono-num" dir="ltr">
+                                      {counter}
+                                    </span>
+                                  )}
+                                </button>
+                                {isPartial && (
+                                  <button
+                                    type="button"
+                                    disabled={busyCode === b.bookingCode}
+                                    onClick={() => void handleRosterCheckInAction(b, 'undo')}
+                                    aria-label={`${t.undoOneScanAria} (${b.bookingCode})`}
+                                    title={t.undoOneScanAria}
+                                    className="px-2 py-1.5 rounded-md border border-white/12 bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 hover:text-white font-mono-num text-[11px]"
+                                    dir="ltr"
+                                  >
+                                    -1
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
 
                           {canDeleteBookings &&
                             (confirmDeleteCode === b.bookingCode ? (

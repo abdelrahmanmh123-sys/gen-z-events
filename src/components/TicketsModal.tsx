@@ -14,7 +14,14 @@ import type { User } from 'firebase/auth';
 import { cancelPendingBooking } from '../services/firestoreService';
 import { formatFriendlyFirebaseError } from '../firebase';
 import type { Booking, Concert } from '../types';
-import { getTierColorHex, isPendingEmailVerification, isVerifiedFanAccount } from '../utils/bookingLogic';
+import {
+  formatCheckInProgress,
+  getBookingCheckedInCount,
+  getTierColorHex,
+  isPendingEmailVerification,
+  isVerifiedFanAccount,
+  resolveBookingConcertDetails,
+} from '../utils/bookingLogic';
 import {
   copyTextToClipboard,
   generateOriginalQrDataUrl,
@@ -121,9 +128,10 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
     setGeneratingPngCode(booking.bookingCode);
     try {
       const show = concerts.find((c) => c.id === booking.concertId);
-      const tierHex = getTierColorHex(show, booking.tier);
-      const dataUrl = await renderTicketPassPng(booking, tierHex);
-      setPreviewPng({ code: booking.bookingCode, dataUrl });
+      const liveBooking = resolveBookingConcertDetails(booking, show);
+      const tierHex = getTierColorHex(show, liveBooking.tier);
+      const dataUrl = await renderTicketPassPng(liveBooking, tierHex);
+      setPreviewPng({ code: liveBooking.bookingCode, dataUrl });
     } catch {
       onNotify(t.pngRenderFailed);
     } finally {
@@ -146,17 +154,26 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
   };
 
   const buildWhatsAppHref = (booking: Booking) => {
-    const tierLabel = getTierCopy(booking.tier, lang).name;
-    const statusText = booking.checkedIn
-      ? t.statusCheckedIn
-      : booking.paymentStatus === 'Paid'
-        ? t.statusPaidReady
-        : t.statusPendingVerification;
-    return buildTicketReceiptWhatsAppUrl(booking, {
+    const show = concerts.find((c) => c.id === booking.concertId);
+    const liveBooking = resolveBookingConcertDetails(booking, show);
+    const tierLabel = getTierCopy(liveBooking.tier, lang).name;
+    const totalQty = Math.max(1, Math.floor(liveBooking.quantity || 1));
+    const scannedCount = getBookingCheckedInCount(liveBooking);
+    const statusText =
+      scannedCount >= totalQty
+        ? totalQty > 1
+          ? `${t.statusCheckedIn} ${formatCheckInProgress(scannedCount, totalQty)}`
+          : t.statusCheckedIn
+        : scannedCount > 0
+          ? `${t.partialEnteredLabel} ${formatCheckInProgress(scannedCount, totalQty)}`
+          : liveBooking.paymentStatus === 'Paid'
+            ? t.statusPaidReady
+            : t.statusPendingVerification;
+    return buildTicketReceiptWhatsAppUrl(liveBooking, {
       lang,
       tierLabel,
-      paymentMethodLabel: getPaymentMethodLabel(booking.paymentMethod, lang),
-      totalFormatted: formatCurrencyEgp(booking.totalEgp, lang),
+      paymentMethodLabel: getPaymentMethodLabel(liveBooking.paymentMethod, lang),
+      totalFormatted: formatCurrencyEgp(liveBooking.totalEgp, lang),
       statusText,
     });
   };
@@ -234,9 +251,10 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
               <p className="text-sm text-slate-400">{t.noPassesYetDesc}</p>
             </div>
           ) : (
-            bookings.map((b) => {
+            bookings.map((rawBooking) => {
+              const show = concerts.find((c) => c.id === rawBooking.concertId);
+              const b = resolveBookingConcertDetails(rawBooking, show);
               const isPaid = b.paymentStatus === 'Paid';
-              const show = concerts.find((c) => c.id === b.concertId);
               const tierHex = getTierColorHex(show, b.tier);
               const tierLabel = getTierCopy(b.tier, lang).name;
               const qrUrl = qrMap[b.bookingCode];
@@ -287,21 +305,41 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
                           <span dir="ltr">{b.concertDate} · {b.concertTime}</span> · {b.concertVenue}
                         </p>
                       </div>
-                      <span
-                        className={`text-[11px] font-mono-num font-bold uppercase tracking-wider px-2.5 py-1 rounded border shrink-0 ${
-                          b.checkedIn
-                            ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
-                            : isPaid
-                              ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
-                              : 'text-amber-300 border-amber-400/40 bg-amber-400/10'
-                        }`}
-                      >
-                        {b.checkedIn
-                          ? t.statusCheckedIn
-                          : isPaid
-                            ? t.statusPaidReady
-                            : t.statusPendingVerification}
-                      </span>
+                      {(() => {
+                        const totalQty = Math.max(1, Math.floor(b.quantity || 1));
+                        const scannedCount = getBookingCheckedInCount(b);
+                        const isFullyEntered = scannedCount >= totalQty;
+                        const isPartiallyEntered = scannedCount > 0 && !isFullyEntered;
+                        const progress = totalQty > 1 ? ` ${formatCheckInProgress(scannedCount, totalQty)}` : '';
+                        return (
+                          <span
+                            className={`text-[11px] font-mono-num font-bold uppercase tracking-wider px-2.5 py-1 rounded border shrink-0 ${
+                              isFullyEntered
+                                ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                                : isPartiallyEntered
+                                  ? 'text-cyan-200 border-cyan-400/40 bg-cyan-500/10'
+                                  : isPaid
+                                    ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                                    : 'text-amber-300 border-amber-400/40 bg-amber-400/10'
+                            }`}
+                          >
+                            {isFullyEntered ? (
+                              <>
+                                {t.statusCheckedIn}
+                                {progress && <span dir="ltr">{progress}</span>}
+                              </>
+                            ) : isPartiallyEntered ? (
+                              <>
+                                {t.partialEnteredLabel} <span dir="ltr">{formatCheckInProgress(scannedCount, totalQty)}</span>
+                              </>
+                            ) : isPaid ? (
+                              t.statusPaidReady
+                            ) : (
+                              t.statusPendingVerification
+                            )}
+                          </span>
+                        );
+                      })()}
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1 text-xs">
@@ -402,7 +440,7 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
                       </span>
                     </div>
 
-                    {!isPaid && !b.checkedIn && (
+                    {!isPaid && getBookingCheckedInCount(b) === 0 && (
                       confirmCancelCode === b.bookingCode ? (
                         <div className="flex items-center gap-1.5 ms-auto">
                           <button
@@ -433,10 +471,16 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
                       )
                     )}
 
-                    {b.checkedIn && (
+                    {getBookingCheckedInCount(b) > 0 && (
                       <span className="ms-auto inline-flex items-center gap-1 text-xs text-emerald-400">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        {t.enteredLabel} <span dir="ltr">{b.checkedInAt}</span>
+                        {t.enteredLabel}{' '}
+                        {b.quantity > 1 && (
+                          <span className="font-mono-num font-bold" dir="ltr">
+                            {formatCheckInProgress(getBookingCheckedInCount(b), b.quantity)}
+                          </span>
+                        )}{' '}
+                        <span dir="ltr">{b.checkedInAt}</span>
                       </span>
                     )}
                   </div>

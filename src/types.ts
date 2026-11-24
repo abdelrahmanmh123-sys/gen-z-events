@@ -82,6 +82,7 @@ export interface Booking {
   transferRef: string;
   paymentStatus: PaymentStatus;
   checkedIn: boolean;
+  checkedInCount?: number;
   checkedInAt: string;
   approvedBy: string;
   approvalMethod: string;
@@ -145,6 +146,15 @@ export interface AdminSession {
   role: AdminRole;
   lastSeen?: unknown;
   createdAt?: unknown;
+}
+
+export interface PaymentConfig {
+  id: string;
+  instapayNumber: string;
+  walletNumber: string;
+  updatedBy?: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
 }
 
 export type SortOption = 'date-asc' | 'price-asc' | 'price-desc';

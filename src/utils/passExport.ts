@@ -187,72 +187,32 @@ export async function renderTicketPassPng(booking: Booking, tierColorHex?: strin
     ctx.fillText(booking.customerName.slice(0, 34), 56, 404);
   }
 
-  // Seamlessly replace ZONE / ROW / SEAT / BARCODE / serial area on the right stub
-  // by smoothly interpolating each column from the clean row above ZONE to the clean row below serial.
-  let blendedStub = false;
-  if (drewBackground) {
-    try {
-      const { x, y, w, h } = rects.patch;
-      const topStrip = ctx.getImageData(x, Math.max(0, y - 2), w, 1).data;
-      const botStrip = ctx.getImageData(x, Math.min(TICKET_CANVAS_HEIGHT - 1, y + h), w, 1).data;
-      const existing = ctx.getImageData(x, y, w, h);
-      const out = existing.data;
-      const edgeFeather = 8;
+  // Draw sleek rounded Digital QR Seal over the physical OFFICIAL STAMP circle
+  ctx.save();
+  const sealRadius = Math.round(rects.patch.w * 0.09);
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.72)';
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 8;
+  const sealGrad = ctx.createLinearGradient(
+    rects.patch.x,
+    rects.patch.y,
+    rects.patch.x,
+    rects.patch.y + rects.patch.h,
+  );
+  sealGrad.addColorStop(0, design.stubTop);
+  sealGrad.addColorStop(0.55, '#090B10');
+  sealGrad.addColorStop(1, design.stubBottom);
+  ctx.fillStyle = sealGrad;
+  drawRoundedRectPath(ctx, rects.patch.x, rects.patch.y, rects.patch.w, rects.patch.h, sealRadius);
+  ctx.fill();
+  ctx.restore();
 
-      for (let row = 0; row < h; row++) {
-        // Ease-out curve matches the artwork's upper-center radial spotlight falloff
-        const rawT = h > 1 ? row / (h - 1) : 0;
-        const t = Math.pow(rawT, 0.72);
-        for (let col = 0; col < w; col++) {
-          const sIdx = col * 4;
-          const dIdx = (row * w + col) * 4;
-          const r = Math.round(topStrip[sIdx] + (botStrip[sIdx] - topStrip[sIdx]) * t);
-          const g = Math.round(topStrip[sIdx + 1] + (botStrip[sIdx + 1] - topStrip[sIdx + 1]) * t);
-          const b = Math.round(topStrip[sIdx + 2] + (botStrip[sIdx + 2] - topStrip[sIdx + 2]) * t);
-
-          // Softly feather only the outermost 8px on left/right (well outside the ZONE box)
-          let blend = 1;
-          if (col < edgeFeather) {
-            blend = col / edgeFeather;
-          } else if (col >= w - edgeFeather) {
-            blend = (w - 1 - col) / edgeFeather;
-          }
-
-          if (blend >= 1) {
-            out[dIdx] = r;
-            out[dIdx + 1] = g;
-            out[dIdx + 2] = b;
-            out[dIdx + 3] = 255;
-          } else {
-            out[dIdx] = Math.round(out[dIdx] * (1 - blend) + r * blend);
-            out[dIdx + 1] = Math.round(out[dIdx + 1] * (1 - blend) + g * blend);
-            out[dIdx + 2] = Math.round(out[dIdx + 2] * (1 - blend) + b * blend);
-            out[dIdx + 3] = 255;
-          }
-        }
-      }
-      ctx.putImageData(existing, x, y);
-      blendedStub = true;
-    } catch {
-      // Fall back to radial gradient fill if canvas readback is restricted
-    }
-  }
-
-  if (!blendedStub) {
-    const radGrad = ctx.createRadialGradient(
-      rects.codeText.centerX,
-      rects.patch.y,
-      10,
-      rects.codeText.centerX,
-      rects.patch.y + Math.round(rects.patch.h * 0.2),
-      Math.round(rects.patch.w * 0.85),
-    );
-    radGrad.addColorStop(0, design.stubGlow);
-    radGrad.addColorStop(0.55, design.stubMid);
-    radGrad.addColorStop(1, design.stubBottom);
-    ctx.fillStyle = radGrad;
-    ctx.fillRect(rects.patch.x, rects.patch.y, rects.patch.w, rects.patch.h);
-  }
+  ctx.save();
+  ctx.strokeStyle = design.accentHex;
+  ctx.lineWidth = 2.5;
+  drawRoundedRectPath(ctx, rects.patch.x, rects.patch.y, rects.patch.w, rects.patch.h, sealRadius);
+  ctx.stroke();
+  ctx.restore();
 
   if (booking.paymentStatus === 'Paid') {
     const qrUrl = await generateQrDataUrl(booking.bookingCode);

@@ -1,4 +1,4 @@
-import type { AdminRole, OnlinePaymentMethodId, PaymentMethodId, TierId } from '../types';
+import type { AdminRole, OnlinePaymentMethodId, PaymentConfig, PaymentMethodId, TierId } from '../types';
 import { PAYMENT_PHONE_NUMBER } from '../data/defaults';
 
 export type Language = 'en' | 'ar';
@@ -122,6 +122,51 @@ export const PAYMENT_COPY: Record<
     },
   },
 };
+
+export function buildPaymentMethodCopy(
+  method: OnlinePaymentMethodId,
+  lang: Language,
+  paymentConfig?: Pick<PaymentConfig, 'instapayNumber' | 'walletNumber'> | null,
+): { label: string; sub: string; destination: string; instructions: string } {
+  const base = PAYMENT_COPY[lang][method] || PAYMENT_COPY[lang].InstaPay;
+  const instapayDest = paymentConfig?.instapayNumber?.trim() || PAYMENT_PHONE_NUMBER;
+  const walletDest = paymentConfig?.walletNumber?.trim() || PAYMENT_PHONE_NUMBER;
+  const destination = method === 'InstaPay' ? instapayDest : walletDest;
+
+  if (lang === 'ar') {
+    const instructions =
+      method === 'InstaPay'
+        ? `حوّل إجمالي المبلغ عبر إنستاباي إلى \u2066${destination}\u2069 ثم أدخل رقم مرجع التحويل أو رقم هاتف المُرسِل بالأسفل.`
+        : `أرسل إجمالي المبلغ من فودافون كاش أو أي محفظة إلكترونية في مصر إلى الرقم \u2066${destination}\u2069 ثم أدخل رقم مرجع الرسالة أو رقم المحفظة بالأسفل.`;
+    return {
+      ...base,
+      destination,
+      instructions,
+    };
+  }
+
+  const instructions =
+    method === 'InstaPay'
+      ? `Transfer the total via InstaPay to ${destination} and paste your transfer reference or sender mobile below.`
+      : `Send the total from Vodafone Cash or any Egyptian Mobile Wallet to ${destination} and enter your SMS receipt reference or wallet number.`;
+  return {
+    ...base,
+    destination,
+    instructions,
+  };
+}
+
+export function buildFooterSubtitle(
+  lang: Language,
+  paymentConfig?: Pick<PaymentConfig, 'instapayNumber' | 'walletNumber'> | null,
+): string {
+  const instapayDest = paymentConfig?.instapayNumber?.trim() || PAYMENT_PHONE_NUMBER;
+  const walletDest = paymentConfig?.walletNumber?.trim() || PAYMENT_PHONE_NUMBER;
+  if (lang === 'ar') {
+    return `إنستاباي: \u2066${instapayDest}\u2069 · فودافون كاش والمحافظ: \u2066${walletDest}\u2069 · حفلات صعيد مصر المباشرة`;
+  }
+  return `InstaPay: ${instapayDest} · Vodafone Cash & Wallets: ${walletDest} · Upper Egypt Live Productions`;
+}
 
 export const TICKET_ENTRY_TERMS: Record<
   Language,
@@ -430,6 +475,16 @@ export const translations = {
     reserveAction: 'Reserve',
     copiedNumberPrefix: 'Copied',
     addedWaitlistPrefix: 'Added to waitlist for',
+    editPaymentNumbers: 'Edit Numbers',
+    editPaymentNumbersAria: 'Edit InstaPay and Vodafone Cash numbers',
+    editPaymentPanelTitle: 'Super Admin · Edit Payment Numbers',
+    editPaymentPanelSubtitle: 'Saves to Firestore and updates live for all fans immediately.',
+    instapayNumberLabel: 'InstaPay Number or IPA',
+    vodafoneCashNumberLabel: 'Vodafone Cash / Mobile Wallets Number',
+    savePaymentNumbers: 'Save Numbers',
+    savingPaymentNumbers: 'Saving...',
+    paymentNumbersUpdatedToast: 'InstaPay & Vodafone Cash numbers updated live.',
+    superAdminBadge: 'Super Admin',
 
     // Tickets Modal
     myBookedTickets: 'My Booked Tickets',
@@ -630,6 +685,12 @@ export const translations = {
     confirmPay: 'Confirm Pay',
     awaitingSuperAdmin: 'Super Admin Only',
     checkInBtn: 'Check In',
+    admitNextBtn: 'Admit Next',
+    undoOneScanAria: 'Undo 1 check-in',
+    entriesProgressLabel: 'Entries Scanned',
+    entriesRemainingWord: 'remaining',
+    allEntriesAdmitted: 'All entries admitted',
+    partialEnteredLabel: 'Partially Entered',
     sureBtn: 'Sure?',
     cancelDeleteAria: 'Cancel delete',
 
@@ -723,7 +784,7 @@ export const translations = {
     // Admin Manage
     manageTitle: 'Manage Concerts & Waitlist',
     manageSubtitle:
-      'Adjust live tier pricing, category colors, seat inventory, and export attendee CSV sheets.',
+      'Edit any published concert detail (title, artist, venue, genre, date, time, capacity, pricing, poster, colors) and export attendee CSV sheets.',
     exportAttendeesCsv: 'Export Attendees CSV',
     colShowVenue: 'Show & Venue',
     colSeatsLeft: 'Seats Left',
@@ -732,6 +793,13 @@ export const translations = {
     customPaletteTag: 'Custom palette',
     saveBtn: 'Save',
     editBtn: 'Edit',
+    editConcertTitle: 'Edit Published Concert',
+    editConcertSubtitle: 'Updates publish immediately to the live storefront across all devices.',
+    seatsLeftLabel: 'Seats Left',
+    saveChangesBtn: 'Save Changes',
+    savingChangesBtn: 'Saving Changes...',
+    cancelBtn: 'Cancel',
+    bookedSeatsLabel: 'Booked / Used',
     confirmDeleteBtn: 'Confirm Delete',
     waitlistTitle: 'Sold-Out Waitlist Requests',
     waitingWord: 'waiting',
@@ -897,6 +965,16 @@ export const translations = {
     reserveAction: 'تأكيد حجز',
     copiedNumberPrefix: 'تم نسخ رقم',
     addedWaitlistPrefix: 'تم تسجيلك في قائمة انتظار حفل',
+    editPaymentNumbers: 'تعديل الأرقام',
+    editPaymentNumbersAria: 'تعديل أرقام إنستاباي وفودافون كاش',
+    editPaymentPanelTitle: 'المدير العام · تعديل أرقام الدفع',
+    editPaymentPanelSubtitle: 'يتم الحفظ في قاعدة البيانات وتحديث الأرقام فوراً لجميع الجمهور.',
+    instapayNumberLabel: 'رقم إنستاباي أو عنوان الدفع (IPA)',
+    vodafoneCashNumberLabel: 'رقم فودافون كاش / المحافظ الإلكترونية',
+    savePaymentNumbers: 'حفظ الأرقام',
+    savingPaymentNumbers: 'جارٍ الحفظ...',
+    paymentNumbersUpdatedToast: 'تم تحديث أرقام إنستاباي وفودافون كاش مباشرة للجميع.',
+    superAdminBadge: 'مدير عام',
 
     // Tickets Modal
     myBookedTickets: 'تذاكري المحجوزة',
@@ -1096,6 +1174,12 @@ export const translations = {
     confirmPay: 'تأكيد الدفع',
     awaitingSuperAdmin: 'بانتظار المشرف العام',
     checkInBtn: 'تسجيل دخول',
+    admitNextBtn: 'إدخال التالي',
+    undoOneScanAria: 'تراجع عن دخول واحد',
+    entriesProgressLabel: 'الدخول المسجل',
+    entriesRemainingWord: 'متبقي',
+    allEntriesAdmitted: 'اكتمل دخول الجميع',
+    partialEnteredLabel: 'دخول جزئي',
     sureBtn: 'تأكيد؟',
     cancelDeleteAria: 'إلغاء الحذف',
 
@@ -1189,7 +1273,7 @@ export const translations = {
     // Admin Manage
     manageTitle: 'إدارة الحفلات وقائمة الانتظار',
     manageSubtitle:
-      'عدّل الأسعار وألوان الفئات والمقاعد المتبقية، وصدّر كشوفات الحضور بصيغة CSV.',
+      'عدّل جميع تفاصيل أي حفل منشور (الاسم، الفنان، المكان، التصنيف، التاريخ، الوقت، السعة، الأسعار، البوستر، والألوان) وصدّر كشوفات الحضور CSV.',
     exportAttendeesCsv: 'تصدير الحضور CSV',
     colShowVenue: 'الحفل والمكان',
     colSeatsLeft: 'المقاعد المتبقية',
@@ -1198,6 +1282,13 @@ export const translations = {
     customPaletteTag: 'ألوان مخصصة',
     saveBtn: 'حفظ',
     editBtn: 'تعديل',
+    editConcertTitle: 'تعديل تفاصيل الحفل المنشور',
+    editConcertSubtitle: 'تُحفظ التعديلات وتظهر فوراً في واجهة الموقع على جميع الأجهزة.',
+    seatsLeftLabel: 'المقاعد المتبقية',
+    saveChangesBtn: 'حفظ التعديلات',
+    savingChangesBtn: 'جارٍ حفظ التعديلات...',
+    cancelBtn: 'إلغاء',
+    bookedSeatsLabel: 'محجوز / مستخدم',
     confirmDeleteBtn: 'تأكيد الحذف',
     waitlistTitle: 'طلبات قائمة الانتظار (الحفلات المكتملة)',
     waitingWord: 'بالانتظار',

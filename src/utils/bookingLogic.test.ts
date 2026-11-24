@@ -8,16 +8,21 @@ import {
   buildCalendarIcs,
   calculateOrderTotals,
   canAccessAdminTab,
+  computeAdjustedSeatsLeft,
   computeAdminKpis,
   computeCountdown,
+  DEFAULT_PAYMENT_CONFIG,
   emailToDocId,
   escapeCsvCell,
   evaluatePasswordStrength,
   evaluatePromo,
   filterAndSortConcerts,
   fitPosterDimensions,
+  formatCheckInProgress,
   formatDateTimeDisplay,
   generateBookingCode,
+  getBookingCheckedInCount,
+  getBookingRemainingEntries,
   getDefaultUpcomingIsoDate,
   getNextUpcomingConcert,
   getStaffPermissions,
@@ -25,6 +30,7 @@ import {
   getTierUnitPrice,
   hexToRgba,
   isAdminSessionActive,
+  isBookingFullyCheckedIn,
   isEmailVerifiedAdminCandidate,
   isPendingEmailVerification,
   isSafeHttpsUrl,
@@ -40,14 +46,18 @@ import {
   parseBoundedIntInput,
   parseOfflineTicketRows,
   partitionAdminSessions,
+  resolveBookingConcertDetails,
+  resolvePaymentConfig,
   sanitizeId,
   sanitizeSpreadsheetCell,
   sortByCreatedAtDesc,
   suggestTierPrices,
+  validateAndBuildConcertEditPayload,
   validateBookingInput,
   validateEgyptianMobile,
   validateEmailAddress,
   validateFullName,
+  validatePaymentConfigInput,
   validateProfileUpdateInput,
   validateSignupInput,
   validateTierColors,
@@ -192,14 +202,14 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.equal(evaluatePromo('   ', 'Silver', 1000, customPromos).message, '');
   });
 
-  it('calculates order totals, clamps quantity to 1..6, and prevents negative totals', () => {
+  it('calculates order totals, clamps quantity to 1..20, and prevents negative totals', () => {
     const res = calculateOrderTotals(TEST_CONCERTS[0], 'VIP', 2, 'VIP100', TEST_PROMOS);
     assert.equal(res.unitPrice, 450);
     assert.equal(res.subtotalEgp, 900);
     assert.equal(res.discountEgp, 100);
     assert.equal(res.totalEgp, 800);
 
-    assert.equal(calculateOrderTotals(TEST_CONCERTS[0], 'Silver', 99, '', TEST_PROMOS).quantity, 6);
+    assert.equal(calculateOrderTotals(TEST_CONCERTS[0], 'Silver', 99, '', TEST_PROMOS).quantity, 20);
     assert.equal(calculateOrderTotals(TEST_CONCERTS[0], 'Silver', 0, '', TEST_PROMOS).quantity, 1);
     assert.equal(calculateOrderTotals(TEST_CONCERTS[0], 'Silver', -4, '', TEST_PROMOS).quantity, 1);
     assert.equal(calculateOrderTotals(TEST_CONCERTS[0], 'Silver', 2.9, '', TEST_PROMOS).quantity, 2);
@@ -953,5 +963,283 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
       assert.match(c, /^GZ-[A-HJ-NP-Z2-9]{6}$/);
     }
   });
+
+  it('adjusts seatsLeft proportionally when organizer updates published concert capacity', () => {
+    // 140 total, 90 left => 50 seats already booked
+    assert.equal(computeAdjustedSeatsLeft(140, 90, 200), 150);
+    assert.equal(computeAdjustedSeatsLeft(140, 90, 100), 50);
+    // Dropping capacity below already-booked seats clamps seatsLeft safely to 0
+    assert.equal(computeAdjustedSeatsLeft(140, 90, 40), 0);
+    // Sold-out show (0 left out of 100) expanded to 125 opens 25 new seats
+    assert.equal(computeAdjustedSeatsLeft(100, 0, 125), 25);
+  });
+
+  it('validates and builds full published concert edit payloads including title, artist, venue, genre, date, start time, capacity, pricing, and colors', () => {
+    const original = TEST_CONCERTS[0];
+    const baseDraft = {
+      title: 'Nile Pulse Winter Gala',
+      artist: 'Amr Diab & Guests',
+      venue: 'Qena Nile Corniche Amphitheater',
+      genre: 'Hip-Hop / Pop',
+      isoDate: '2026-12-20',
+      isoTime: '21:30:00',
+      totalSeats: '350',
+      seatsLeft: '280',
+      silver: '350',
+      gold: '550',
+      vip: '850',
+      lounge: '1300',
+      useCustomColors: true,
+      hexDrafts: {
+        Silver: '#cbd5e1',
+        Gold: '#f59e0b',
+        VIP: '#e11d48',
+        Lounge: '#06b6d4',
+      },
+      posterUrl: 'https://cdn.example.com/nile-pulse.jpg',
+      description: 'Updated winter gala headliner live by the Nile in Qena with full stage lighting.',
+    };
+
+    const ok = validateAndBuildConcertEditPayload(original, baseDraft);
+    assert.equal(ok.valid, true);
+    if (ok.valid) {
+      assert.equal(ok.concert.id, original.id);
+      assert.equal(ok.concert.title, 'Nile Pulse Winter Gala');
+      assert.equal(ok.concert.artist, 'Amr Diab & Guests');
+      assert.equal(ok.concert.venue, 'Qena Nile Corniche Amphitheater');
+      assert.equal(ok.concert.genre, 'Hip-Hop / Pop');
+      assert.equal(ok.concert.isoDate, '2026-12-20');
+      assert.equal(ok.concert.isoTime, '21:30');
+      assert.equal(ok.concert.date, 'Sun, Dec 20, 2026');
+      assert.equal(ok.concert.time, '9:30 PM');
+      assert.equal(ok.concert.doors, '8:00 PM');
+      assert.equal(ok.concert.totalSeats, 350);
+      assert.equal(ok.concert.seatsLeft, 280);
+      assert.equal(ok.concert.priceEgp, 350);
+      assert.deepEqual(ok.concert.tierPrices, {
+        Silver: 350,
+        Gold: 550,
+        VIP: 850,
+        Lounge: 1300,
+      });
+      assert.deepEqual(ok.concert.tierColors, {
+        Silver: '#CBD5E1',
+        Gold: '#F59E0B',
+        VIP: '#E11D48',
+        Lounge: '#06B6D4',
+      });
+    }
+
+    // Disabling custom colors clears tierColors cleanly
+    const defaultColors = validateAndBuildConcertEditPayload(original, {
+      ...baseDraft,
+      useCustomColors: false,
+      totalSeats: '٢٥٠',
+      seatsLeft: '٢٠٠',
+    });
+    assert.equal(defaultColors.valid, true);
+    if (defaultColors.valid) {
+      assert.equal(defaultColors.concert.tierColors, undefined);
+      assert.equal(defaultColors.concert.totalSeats, 250);
+      assert.equal(defaultColors.concert.seatsLeft, 200);
+    }
+
+    // Rejects seatsLeft > totalSeats (must match firestore.rules invariant)
+    const overflowSeats = validateAndBuildConcertEditPayload(original, {
+      ...baseDraft,
+      totalSeats: '100',
+      seatsLeft: '101',
+    });
+    assert.equal(overflowSeats.valid, false);
+
+    // Rejects invalid calendar date (Feb 30) and invalid clock time (25:00)
+    const badDate = validateAndBuildConcertEditPayload(original, {
+      ...baseDraft,
+      isoDate: '2026-02-30',
+    });
+    assert.equal(badDate.valid, false);
+
+    const badTime = validateAndBuildConcertEditPayload(original, {
+      ...baseDraft,
+      isoTime: '25:00',
+    });
+    assert.equal(badTime.valid, false);
+
+    // Rejects short required text fields, unsafe poster URL, and invalid hex color
+    const badVenue = validateAndBuildConcertEditPayload(original, { ...baseDraft, venue: 'Q' });
+    assert.equal(badVenue.valid, false);
+
+    const badPoster = validateAndBuildConcertEditPayload(original, {
+      ...baseDraft,
+      posterUrl: 'javascript:alert(1)',
+    });
+    assert.equal(badPoster.valid, false);
+
+    const badColor = validateAndBuildConcertEditPayload(original, {
+      ...baseDraft,
+      useCustomColors: true,
+      hexDrafts: { ...baseDraft.hexDrafts, Gold: 'not-a-hex' },
+    });
+    assert.equal(badColor.valid, false);
+  });
+
+  it('merges updated live concert title, date, time, and venue onto existing bookings', () => {
+    const staleBooking: Booking = {
+      bookingCode: 'GZ-LIVE99',
+      userId: 'uid-1',
+      concertId: TEST_CONCERTS[0].id,
+      concertTitle: 'Old Concert Title',
+      concertDate: 'Fri, Dec 1, 2026',
+      concertTime: '7:00 PM',
+      concertVenue: 'Old Qena Venue',
+      tier: 'Gold',
+      quantity: 2,
+      unitPrice: 300,
+      promoCode: '',
+      discountEgp: 0,
+      totalEgp: 600,
+      paymentMethod: 'InstaPay',
+      transferRef: '01012345678',
+      paymentStatus: 'Paid',
+      checkedIn: false,
+      checkedInAt: '',
+      approvedBy: 'Admin',
+      approvalMethod: 'Manual',
+      customerName: 'Nour Hassan',
+      customerMobile: '01012345678',
+      customerEmail: 'nour@example.com',
+    };
+
+    const updatedConcert: Concert = {
+      ...TEST_CONCERTS[0],
+      title: 'Updated Qena Arena Show',
+      date: 'Sun, Dec 20, 2026',
+      time: '9:30 PM',
+      venue: 'New Qena Stadium',
+    };
+
+    const synced = resolveBookingConcertDetails(staleBooking, updatedConcert);
+    assert.equal(synced.concertTitle, 'Updated Qena Arena Show');
+    assert.equal(synced.concertDate, 'Sun, Dec 20, 2026');
+    assert.equal(synced.concertTime, '9:30 PM');
+    assert.equal(synced.concertVenue, 'New Qena Stadium');
+    assert.equal(synced.bookingCode, 'GZ-LIVE99');
+
+    // Falls back safely to snapshot when concert is no longer in catalog
+    const fallback = resolveBookingConcertDetails(staleBooking, undefined);
+    assert.equal(fallback.concertTitle, 'Old Concert Title');
+    assert.equal(fallback.concertVenue, 'Old Qena Venue');
+  });
+
+  it('validates and resolves InstaPay & Vodafone Cash payment config numbers cleanly', () => {
+    // Default resolution when missing or blank
+    assert.deepEqual(resolvePaymentConfig(null), DEFAULT_PAYMENT_CONFIG);
+    assert.equal(resolvePaymentConfig({ instapayNumber: '  ', walletNumber: '' }).instapayNumber, '+201040206700');
+
+    // Valid Egyptian mobiles preserving +20 or 01x format & normalizing Arabic-Indic digits
+    const validPhones = validatePaymentConfigInput({
+      instapayNumber: '+20 101 234 5678',
+      walletNumber: '٠١٠٩٨٧٦٥٤٣٢',
+    });
+    assert.equal(validPhones.valid, true);
+    if (validPhones.valid) {
+      assert.equal(validPhones.normalized.instapayNumber, '+201012345678');
+      assert.equal(validPhones.normalized.walletNumber, '01098765432');
+    }
+
+    // Valid InstaPay IPA handle + Vodafone Cash mobile
+    const validIpa = validatePaymentConfigInput({
+      instapayNumber: 'genz.events@instapay',
+      walletNumber: '+201040206700',
+    });
+    assert.equal(validIpa.valid, true);
+    if (validIpa.valid) {
+      assert.equal(validIpa.normalized.instapayNumber, 'genz.events@instapay');
+      assert.equal(validIpa.normalized.walletNumber, '+201040206700');
+    }
+
+    // Rejects invalid/malicious InstaPay and invalid Vodafone Cash numbers
+    assert.equal(
+      validatePaymentConfigInput({ instapayNumber: '<script>@x', walletNumber: '01040206700' }).valid,
+      false,
+    );
+    assert.equal(
+      validatePaymentConfigInput({ instapayNumber: '1234', walletNumber: '01040206700' }).valid,
+      false,
+    );
+    assert.equal(
+      validatePaymentConfigInput({ instapayNumber: 'genz@instapay', walletNumber: '09912345678' }).valid,
+      false,
+    );
+    assert.equal(
+      validatePaymentConfigInput({ instapayNumber: 'genz@instapay', walletNumber: '01000000000' }).valid,
+      false,
+    );
+  });
+
+  it('tracks multi-ticket check-in progress, legacy fallback, partial KPIs, and CSV formatting', () => {
+    // Legacy bookings without checkedInCount
+    assert.equal(getBookingCheckedInCount({ quantity: 5, checkedIn: false }), 0);
+    assert.equal(getBookingCheckedInCount({ quantity: 5, checkedIn: true }), 5);
+    assert.equal(getBookingRemainingEntries({ quantity: 5, checkedIn: false }), 5);
+    assert.equal(isBookingFullyCheckedIn({ quantity: 5, checkedIn: true }), true);
+
+    // Partial multi-ticket scans
+    assert.equal(getBookingCheckedInCount({ quantity: 5, checkedIn: false, checkedInCount: 2 }), 2);
+    assert.equal(getBookingRemainingEntries({ quantity: 5, checkedIn: false, checkedInCount: 2 }), 3);
+    assert.equal(isBookingFullyCheckedIn({ quantity: 5, checkedIn: false, checkedInCount: 2 }), false);
+    assert.equal(isBookingFullyCheckedIn({ quantity: 5, checkedIn: true, checkedInCount: 5 }), true);
+
+    // Clamping and progress label formatting
+    assert.equal(getBookingCheckedInCount({ quantity: 5, checkedIn: false, checkedInCount: 99 }), 5);
+    assert.equal(getBookingCheckedInCount({ quantity: 5, checkedIn: false, checkedInCount: -3 }), 0);
+    assert.equal(formatCheckInProgress(1, 5), '(1/5)');
+    assert.equal(formatCheckInProgress(2, 5), '(2/5)');
+    assert.equal(formatCheckInProgress(5, 5), '(5/5)');
+
+    // KPI aggregation counts partial check-ins accurately (2 of 5 + legacy 3 of 3 = 5 guests)
+    const partialBooking: Booking = {
+      bookingCode: 'GZ-PART5',
+      userId: 'u1',
+      concertId: TEST_CONCERTS[0].id,
+      concertTitle: TEST_CONCERTS[0].title,
+      concertDate: TEST_CONCERTS[0].date,
+      concertTime: TEST_CONCERTS[0].time,
+      concertVenue: TEST_CONCERTS[0].venue,
+      tier: 'Gold',
+      quantity: 5,
+      unitPrice: 750,
+      promoCode: '',
+      discountEgp: 0,
+      totalEgp: 3750,
+      paymentMethod: 'InstaPay',
+      transferRef: 'IP-5555',
+      paymentStatus: 'Paid',
+      checkedIn: false,
+      checkedInCount: 2,
+      checkedInAt: '8:10 PM',
+      approvedBy: 'Gate 1',
+      approvalMethod: 'Camera QR',
+      customerName: 'Nour Adel',
+      customerMobile: '01012345678',
+      customerEmail: 'nour@example.com',
+    };
+    const legacyBooking: Booking = {
+      ...partialBooking,
+      bookingCode: 'GZ-LEG03',
+      quantity: 3,
+      totalEgp: 2250,
+      checkedIn: true,
+      checkedInCount: undefined,
+    };
+    const kpis = computeAdminKpis(TEST_CONCERTS, [partialBooking, legacyBooking]);
+    assert.equal(kpis.checkedIn, 5);
+    assert.equal(kpis.ticketsSold, 8);
+
+    const csv = buildAttendeesCsv([partialBooking, legacyBooking]);
+    assert.ok(csv.includes('2/5'));
+    assert.ok(csv.includes('3/3'));
+  });
 });
+
 

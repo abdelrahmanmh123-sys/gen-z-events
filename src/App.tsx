@@ -20,7 +20,7 @@ const LazyAdminWorkspace = lazy(() =>
 );
 import { auth, db, formatFriendlyFirebaseError, handleFirestoreError, OperationType } from './firebase';
 import { useLanguage } from './i18n/LanguageContext';
-import { getGenreLabel, localizeKnownMessage } from './i18n/translations';
+import { buildFooterSubtitle, getGenreLabel, localizeKnownMessage } from './i18n/translations';
 import {
   checkIsEmailAdmin,
   createAdminSession,
@@ -33,17 +33,21 @@ import type {
   AdminSession,
   Booking,
   Concert,
+  PaymentConfig,
   Promo,
   SortOption,
   UserProfile,
   WaitlistEntry,
 } from './types';
 import {
+  DEFAULT_PAYMENT_CONFIG,
   filterAndSortConcerts,
   getNextUpcomingConcert,
   isEmailVerifiedAdminCandidate,
   isVerifiedFanAccount,
   partitionAdminSessions,
+  PAYMENT_CONFIG_DOC_ID,
+  resolvePaymentConfig,
   sortByCreatedAtDesc,
 } from './utils/bookingLogic';
 import { copyTextToClipboard } from './utils/passExport';
@@ -62,6 +66,7 @@ export default function App() {
   const [concertsLoaded, setConcertsLoaded] = useState(false);
   const [dbPromos, setDbPromos] = useState<Promo[]>([]);
   const [promosLoaded, setPromosLoaded] = useState(false);
+  const [paymentConfig, setPaymentConfig] = useState<PaymentConfig>(DEFAULT_PAYMENT_CONFIG);
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
 
   // Admin-Only Live Data
@@ -159,9 +164,25 @@ export default function App() {
       (err) => handleFirestoreError(err, OperationType.LIST, 'promos'),
     );
 
+    const unsubPaymentConfig = onSnapshot(
+      doc(db, 'paymentConfig', PAYMENT_CONFIG_DOC_ID),
+      (snap) => {
+        if (snap.exists()) {
+          setPaymentConfig(resolvePaymentConfig(snap.data() as Partial<PaymentConfig>));
+        } else {
+          setPaymentConfig(DEFAULT_PAYMENT_CONFIG);
+        }
+      },
+      () => {
+        // Gracefully keep default payment numbers if doc read encounters a transient issue
+        setPaymentConfig(DEFAULT_PAYMENT_CONFIG);
+      },
+    );
+
     return () => {
       unsubConcerts();
       unsubPromos();
+      unsubPaymentConfig();
     };
   }, []);
 
@@ -444,6 +465,7 @@ export default function App() {
     () => profile?.displayName || auth.currentUser?.displayName || user?.displayName || '',
     [profile?.displayName, user?.displayName, authRevision],
   );
+  const isSuperAdmin = Boolean(adminMember?.role === 'Super Admin' && user?.emailVerified);
 
   // Full-screen Staff Command Center Mode (lazy-loaded strictly for verified staff)
   if (adminPortalOpen && adminMember && user?.emailVerified) {
@@ -654,7 +676,7 @@ export default function App() {
             <BrandLogo size="md" />
             <div className="space-y-0.5">
               <p className="font-display font-bold text-sm text-white">{t.brandCity}</p>
-              <p>{t.footerSubtitle}</p>
+              <p>{buildFooterSubtitle(lang, paymentConfig)}</p>
             </div>
           </div>
           <div className="flex items-center gap-5">
@@ -689,6 +711,9 @@ export default function App() {
         concert={bookingConcert}
         onClose={() => setBookingConcert(null)}
         promos={promos}
+        paymentConfig={paymentConfig}
+        isSuperAdmin={isSuperAdmin}
+        adminName={displayName || adminMember?.name || user?.email || 'Super Admin'}
         user={user}
         profile={profile}
         onRequireAuth={() => {

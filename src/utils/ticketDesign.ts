@@ -1,14 +1,14 @@
 import { PAYMENT_WHATSAPP_NUMBER } from '../data/defaults';
 import type { Booking, TierId } from '../types';
 
-export type TicketDesignKey = 'silver' | 'gold' | 'vip' | 'bronze';
+export type TicketDesignKey = 'silver' | 'gold' | 'vip' | 'lounge';
 
 export interface TicketDesignSpec {
   key: TicketDesignKey;
   imagePath: string;
   label: string;
   accentHex: string;
-  /** Exact center-spotlight, mid-body, bottom, and outer-edge RGB hexes sampled from the PNG stub */
+  /** Tier-matched dark palette for card border glow, skeleton loader, and offline fallback */
   stubGlow: string;
   stubTop: string;
   stubMid: string;
@@ -29,82 +29,85 @@ export function buildQrDownloadFilename(bookingCode: string): string {
 }
 
 /**
- * Exact normalized geometry (0..1) of the right-hand stub area on the 4344x1448 (3:1)
- * official Gen Z Events ticket artworks.
+ * Exact normalized geometry (0..1) of the Digital QR Seal replacing the physical
+ * "مكان الختم / OFFICIAL STAMP" circle on the 4344x1448 (3:1) Houda x Qena artworks.
  *
  * Measured artwork boundaries:
- * - Perforation dashed line: x = 0.7472
- * - White ZONE/ROW/SEAT box: x = 0.7739..0.9735, y = 0.4700..0.6460
- * - Barcode + fake serial:   x = 0.7843..0.9629, y = 0.6934..0.8702
- * - "CONCERT TICKET" text:   y = 0.4200..0.4320
- * - Bottom tear notch:       x <= 0.757, y >= 0.942
- * - Right metallic frame:    x = 0.9942
- * - Bottom metallic frame:   y = 0.9700
+ * - Arabic headline ("حودة X قنا") right edge: x = 0.6682
+ * - Physical OFFICIAL STAMP outer ring:        x = 0.6935..0.7995, y = 0.2345..0.5586
+ * - Perforation dashed line center:            x = 0.7465
+ * - Right-stub giant tier title (LOUNGE/etc):  y >= 0.675
+ *
+ * Placing the rounded dark QR seal at x = 0.684..0.810, y = 0.214..0.654 completely
+ * covers the physical stamp circle while leaving 100% of the Arabic headline,
+ * bottom date/time/venue bar, and right-stub tier artwork completely unobstructed.
  */
 export const TICKET_STUB_SLOT = {
-  patchLeft: 0.76,
-  patchWidth: 0.226,
-  patchTop: 0.45,
-  patchHeight: 0.496,
-  /** Relative to full ticket height so the QR fills ~86% of the stub slot for effortless scanning */
-  qrFrameHeightRatio: 0.428,
-  qrInnerPaddingRatio: 0.026,
+  patchLeft: 0.684,
+  patchWidth: 0.126,
+  patchTop: 0.214,
+  patchHeight: 0.44,
+  /** Relative to full ticket height so the QR fills ~76% of the seal height cleanly */
+  qrFrameHeightRatio: 0.336,
+  qrInnerPaddingRatio: 0.032,
 } as const;
 
 export const TICKET_DESIGN_CATALOG: Record<TicketDesignKey, TicketDesignSpec> = {
   silver: {
     key: 'silver',
-    imagePath: '/assets/aistudio/silver_front_0b6e6ae1.png',
+    imagePath: '/assets/aistudio/Picsart_26-11-23_23-44-09-266_6f827646.jpg',
     label: 'SILVER',
     accentHex: '#CBD5E1',
-    stubGlow: '#44494F',
-    stubTop: '#2D3137',
-    stubMid: '#1F2328',
-    stubBottom: '#15181D',
-    stubEdge: '#1A1D22',
+    stubGlow: '#3E444D',
+    stubTop: '#242932',
+    stubMid: '#151921',
+    stubBottom: '#0A0D12',
+    stubEdge: '#11151C',
   },
   gold: {
     key: 'gold',
-    imagePath: '/assets/aistudio/gold_front_60cec974.png',
+    imagePath: '/assets/aistudio/Picsart_26-11-23_23-43-56-751_8cb50bad.jpg',
     label: 'GOLD',
     accentHex: '#F5D06B',
-    stubGlow: '#554622',
-    stubTop: '#332B19',
-    stubMid: '#241F14',
-    stubBottom: '#18150E',
-    stubEdge: '#201C13',
+    stubGlow: '#52401A',
+    stubTop: '#312611',
+    stubMid: '#1D170B',
+    stubBottom: '#0E0B06',
+    stubEdge: '#171209',
   },
   vip: {
     key: 'vip',
-    imagePath: '/assets/aistudio/vip_front_b1555c0d.png',
-    label: 'VIP LOUNGE',
-    accentHex: '#C084FC',
-    stubGlow: '#412462',
-    stubTop: '#281A40',
-    stubMid: '#1C142E',
-    stubBottom: '#130D21',
-    stubEdge: '#191229',
+    imagePath: '/assets/aistudio/Picsart_26-11-23_23-44-23-795_e887538b.jpg',
+    label: 'FAN PIT',
+    accentHex: '#84CC16',
+    stubGlow: '#2A4D14',
+    stubTop: '#1A300C',
+    stubMid: '#101E08',
+    stubBottom: '#081005',
+    stubEdge: '#0D1807',
   },
-  bronze: {
-    key: 'bronze',
-    imagePath: '/assets/aistudio/bronze_front_be8bcb17.png',
-    label: 'BRONZE',
-    accentHex: '#D9895B',
-    stubGlow: '#472B18',
-    stubTop: '#2E1E15',
-    stubMid: '#201712',
-    stubBottom: '#150F0C',
-    stubEdge: '#1C1511',
+  lounge: {
+    key: 'lounge',
+    imagePath: '/assets/aistudio/Picsart_26-11-23_23-43-39-262_423bdafa.jpg',
+    label: 'LOUNGE',
+    accentHex: '#C084FC',
+    stubGlow: '#432066',
+    stubTop: '#291440',
+    stubMid: '#190D29',
+    stubBottom: '#0C0715',
+    stubEdge: '#140A21',
   },
 };
 
-export function getTicketDesignForTier(tier: TierId | 'Bronze' | string): TicketDesignSpec {
+export function getTicketDesignForTier(tier: TierId | string): TicketDesignSpec {
   const normalized = String(tier || '').trim().toLowerCase();
   if (normalized === 'gold') return TICKET_DESIGN_CATALOG.gold;
-  if (normalized === 'vip' || normalized === 'lounge' || normalized === 'vip lounge') {
+  if (normalized === 'lounge' || normalized === 'vip lounge') {
+    return TICKET_DESIGN_CATALOG.lounge;
+  }
+  if (normalized === 'vip' || normalized === 'fan pit' || normalized === 'fanpit') {
     return TICKET_DESIGN_CATALOG.vip;
   }
-  if (normalized === 'bronze') return TICKET_DESIGN_CATALOG.bronze;
   return TICKET_DESIGN_CATALOG.silver;
 }
 
@@ -125,18 +128,19 @@ export function computeTicketStubRects(
   const patchH = Math.round(height * TICKET_STUB_SLOT.patchHeight);
 
   const centerX = Math.round(patchX + patchW / 2);
+  const horizontalInset = Math.max(10, Math.round(patchW * 0.1));
   const maxQrSize = Math.min(
     Math.round(height * TICKET_STUB_SLOT.qrFrameHeightRatio),
-    patchW - Math.round(width * 0.016),
+    patchW - horizontalInset,
   );
   const qrFrameX = Math.round(centerX - maxQrSize / 2);
-  const qrFrameY = patchY + Math.round(height * 0.012);
+  const qrFrameY = patchY + Math.max(8, Math.round(patchH * 0.05));
   const innerPad = Math.max(4, Math.round(maxQrSize * TICKET_STUB_SLOT.qrInnerPaddingRatio));
   const qrImageSize = maxQrSize - innerPad * 2;
 
   const remainingBottom = patchY + patchH - (qrFrameY + maxQrSize);
-  const fontSize = Math.max(15, Math.round(height * 0.042));
-  const baselineY = Math.round(qrFrameY + maxQrSize + remainingBottom * 0.72);
+  const fontSize = Math.max(14, Math.round(height * 0.036));
+  const baselineY = Math.round(qrFrameY + maxQrSize + remainingBottom * 0.68);
 
   return {
     patch: { x: patchX, y: patchY, w: patchW, h: patchH },

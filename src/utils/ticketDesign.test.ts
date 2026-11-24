@@ -15,7 +15,8 @@ import {
   TICKET_DESIGN_CATALOG,
 } from './ticketDesign';
 
-test('all four official ticket background PNG assets exist in public/assets/aistudio', () => {
+test('all four official Houda x Qena ticket artwork assets exist in public/assets/aistudio', () => {
+  assert.deepEqual(Object.keys(TICKET_DESIGN_CATALOG).sort(), ['gold', 'lounge', 'silver', 'vip']);
   for (const spec of Object.values(TICKET_DESIGN_CATALOG)) {
     assert.ok(spec.imagePath.startsWith('/assets/aistudio/'));
     const diskPath = path.join(process.cwd(), 'public', spec.imagePath);
@@ -28,45 +29,46 @@ test('all four official ticket background PNG assets exist in public/assets/aist
   }
 });
 
-test('getTicketDesignForTier maps Silver, Gold, VIP, Lounge, and Bronze cleanly', () => {
+test('getTicketDesignForTier maps Silver, Gold, VIP (Fan Pit), and Lounge to their distinct artworks', () => {
   assert.equal(getTicketDesignForTier('Silver').key, 'silver');
+  assert.equal(getTicketDesignForTier('Silver').label, 'SILVER');
   assert.equal(getTicketDesignForTier('Gold').key, 'gold');
+  assert.equal(getTicketDesignForTier('Gold').label, 'GOLD');
   assert.equal(getTicketDesignForTier('VIP').key, 'vip');
-  assert.equal(getTicketDesignForTier('Lounge').key, 'vip');
-  assert.equal(getTicketDesignForTier('Bronze').key, 'bronze');
-  assert.equal(getTicketDesignForTier('bronze').key, 'bronze');
+  assert.equal(getTicketDesignForTier('VIP').label, 'FAN PIT');
+  assert.equal(getTicketDesignForTier('Fan Pit').key, 'vip');
+  assert.equal(getTicketDesignForTier('Lounge').key, 'lounge');
+  assert.equal(getTicketDesignForTier('Lounge').label, 'LOUNGE');
   assert.equal(getTicketDesignForTier('unknown-tier').key, 'silver');
 });
 
-test('computeTicketStubRects cleanly covers ZONE/ROW/SEAT/barcode without touching frame or CONCERT TICKET', () => {
+test('computeTicketStubRects mounts the Digital QR Seal cleanly over the physical Official Stamp without touching headline or stub title', () => {
   const rects = computeTicketStubRects(TICKET_CANVAS_WIDTH, TICKET_CANVAS_HEIGHT);
   const W = TICKET_CANVAS_WIDTH;
   const H = TICKET_CANVAS_HEIGHT;
 
-  // Strictly right of dashed perforation (0.7472) and left of metallic right border (0.9942)
-  assert.ok(rects.patch.x > W * 0.75, 'patch overlaps perforation line');
-  assert.ok(rects.patch.x + rects.patch.w < W * 0.992, 'patch overlaps right metallic border');
+  // Leaves breathing room after Arabic headline (ends at x=0.6682) and stays clear of stub face center
+  assert.ok(rects.patch.x > W * 0.675, 'QR seal overlaps Arabic headline');
+  assert.ok(rects.patch.x + rects.patch.w < W * 0.825, 'QR seal extends too far into stub portrait');
 
-  // Strictly below "CONCERT TICKET" (0.432) and above bottom metallic border (0.970)
-  assert.ok(rects.patch.y > H * 0.435, 'patch overlaps CONCERT TICKET subtitle');
-  assert.ok(rects.patch.y + rects.patch.h < H * 0.965, 'patch overlaps bottom border');
+  // Completely covers the physical OFFICIAL STAMP circle (x: 0.6935..0.7995, y: 0.2345..0.5586)
+  assert.ok(rects.patch.x <= W * 0.69, 'QR seal leaves left edge of stamp circle exposed');
+  assert.ok(rects.patch.x + rects.patch.w >= W * 0.805, 'QR seal leaves right edge of stamp circle exposed');
+  assert.ok(rects.patch.y <= H * 0.225, 'QR seal leaves top edge of stamp circle exposed');
+  assert.ok(rects.patch.y + rects.patch.h >= H * 0.565, 'QR seal leaves bottom edge of stamp circle exposed');
 
-  // Completely covers white ZONE/ROW/SEAT box (x: 0.7739..0.9735, y: 0.47..0.646)
-  // and barcode + serial (x: 0.7843..0.9629, y: 0.6934..0.8702)
-  assert.ok(rects.patch.x <= W * 0.77, 'patch leaves left edge of ZONE box exposed');
-  assert.ok(rects.patch.x + rects.patch.w >= W * 0.978, 'patch leaves right edge of ZONE box exposed');
-  assert.ok(rects.patch.y <= H * 0.465, 'patch leaves top edge of ZONE box exposed');
-  assert.ok(rects.patch.y + rects.patch.h >= H * 0.885, 'patch leaves serial text exposed');
+  // Stays completely above right-stub giant tier title (starts at y >= 0.675)
+  assert.ok(rects.patch.y + rects.patch.h < H * 0.67, 'QR seal overlaps right-stub tier title');
 
-  // QR frame is large (>= 210px on 1500x500), strictly inside patch, with clean quiet zone
-  assert.ok(rects.qrFrame.size >= 210, `QR frame too small: ${rects.qrFrame.size}`);
+  // QR frame is large and scannable (>= 160px on 1500x500), strictly inside seal
+  assert.ok(rects.qrFrame.size >= 160, `QR frame too small: ${rects.qrFrame.size}`);
   assert.ok(rects.qrFrame.x > rects.patch.x);
   assert.ok(rects.qrFrame.x + rects.qrFrame.size < rects.patch.x + rects.patch.w);
   assert.ok(rects.qrFrame.y >= rects.patch.y);
-  assert.ok(rects.qrImage.size >= 196, `QR inner image too small: ${rects.qrImage.size}`);
+  assert.ok(rects.qrImage.size >= 150, `QR inner image too small: ${rects.qrImage.size}`);
 
-  // Booking code sits below QR frame and strictly inside the patch
-  assert.ok(rects.codeText.baselineY > rects.qrFrame.y + rects.qrFrame.size + 10);
+  // Booking code sits below QR frame and strictly inside the seal
+  assert.ok(rects.codeText.baselineY > rects.qrFrame.y + rects.qrFrame.size + 8);
   assert.ok(rects.codeText.baselineY < rects.patch.y + rects.patch.h);
 });
 

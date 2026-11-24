@@ -430,7 +430,8 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
             <div className="flex flex-col sm:flex-row gap-2.5">
               <input
                 id="sch-poster"
-                type="url"
+                type="text"
+                inputMode="url"
                 dir="ltr"
                 value={posterUrl}
                 onChange={(e) => setPosterUrl(e.target.value)}
