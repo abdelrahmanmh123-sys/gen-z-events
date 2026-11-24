@@ -9,6 +9,7 @@ import {
   inMemoryPersistence,
   GoogleAuthProvider,
   type Auth,
+  type User,
 } from 'firebase/auth';
 import {
   type Firestore,
@@ -109,6 +110,19 @@ export function handleFirestoreError(
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
+}
+
+/**
+ * Ensures a verified user's Firebase Auth ID token carries email_verified=true
+ * before issuing security-rule-protected Firestore writes.
+ */
+export async function ensureFreshVerifiedToken(user: User | null | undefined): Promise<void> {
+  if (!user) return;
+  const tokenResult = await user.getIdTokenResult();
+  if (!tokenResult.claims.email_verified) {
+    await user.reload();
+    await user.getIdToken(true);
+  }
 }
 
 export function formatFriendlyFirebaseError(error: unknown): string {

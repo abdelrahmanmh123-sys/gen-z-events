@@ -70,7 +70,8 @@ export const TICKET_TIERS: TierMeta[] = [
 ];
 
 export const PAYMENT_PHONE_NUMBER = '+201040206700';
-export const PAYMENT_WHATSAPP_NUMBER = '201040206700';
+export const PAYMENT_WHATSAPP_NUMBER = '201016131000';
+export const PAYMENT_WHATSAPP_DISPLAY = '+201016131000';
 
 export const PAYMENT_METHODS: PaymentMethodMeta[] = [
   {

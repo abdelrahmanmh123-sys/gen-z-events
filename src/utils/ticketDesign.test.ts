@@ -80,8 +80,8 @@ test('original-size QR export settings and download filename builder are crisp a
   assert.equal(buildQrDownloadFilename(''), 'ticket-genz-qr.png');
 });
 
-test('buildTicketReceiptWhatsAppUrl directs straight to +201040206700 with receipt details in EN and AR', () => {
-  assert.equal(PAYMENT_WHATSAPP_NUMBER, '201040206700');
+test('buildTicketReceiptWhatsAppUrl directs straight to +201016131000 with receipt details in EN and AR', () => {
+  assert.equal(PAYMENT_WHATSAPP_NUMBER, '201016131000');
 
   const pendingBooking = {
     bookingCode: 'GZ-RCP888',
@@ -103,7 +103,7 @@ test('buildTicketReceiptWhatsAppUrl directs straight to +201040206700 with recei
     totalFormatted: '1,200 EGP',
     statusText: 'Pending Verification',
   });
-  assert.ok(enUrl.startsWith('https://wa.me/201040206700?text='));
+  assert.ok(enUrl.startsWith('https://wa.me/201016131000?text='));
   const enBody = decodeURIComponent(enUrl.split('?text=')[1]);
   assert.ok(enBody.includes('GZ-RCP888'));
   assert.ok(enBody.includes('IPN-998877'));
@@ -117,7 +117,7 @@ test('buildTicketReceiptWhatsAppUrl directs straight to +201040206700 with recei
     totalFormatted: '1,200 ج.م',
     statusText: 'بانتظار مراجعة التحويل',
   });
-  assert.ok(arUrl.startsWith('https://wa.me/201040206700?text='));
+  assert.ok(arUrl.startsWith('https://wa.me/201016131000?text='));
   const arBody = decodeURIComponent(arUrl.split('?text=')[1]);
   assert.ok(arBody.includes('GZ-RCP888'));
   assert.ok(arBody.includes('IPN-998877'));
@@ -133,7 +133,7 @@ test('buildTicketReceiptWhatsAppUrl directs straight to +201040206700 with recei
       statusText: 'Paid · QR Ready',
     },
   );
-  assert.ok(paidUrl.startsWith('https://wa.me/201040206700?text='));
+  assert.ok(paidUrl.startsWith('https://wa.me/201016131000?text='));
   const paidBody = decodeURIComponent(paidUrl.split('?text=')[1]);
   assert.ok(!paidBody.includes('Attached is my payment receipt'));
 });

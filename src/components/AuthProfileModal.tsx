@@ -23,7 +23,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { auth, formatFriendlyFirebaseError, googleProvider } from '../firebase';
+import { auth, ensureFreshVerifiedToken, formatFriendlyFirebaseError, googleProvider } from '../firebase';
 import { BrandLogo } from './BrandLogo';
 import { upsertUserProfile } from '../services/firestoreService';
 import type { UserProfile } from '../types';
@@ -436,6 +436,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
 
     setProfileBusy(true);
     try {
+      await ensureFreshVerifiedToken(activeUser);
       await updateProfile(activeUser, { displayName: check.normalized.displayName });
       await upsertUserProfile(
         activeUser.uid,

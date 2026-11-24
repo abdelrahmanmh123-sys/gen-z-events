@@ -172,7 +172,7 @@ export interface TicketWhatsAppOptions {
 }
 
 /**
- * Builds a direct WhatsApp click-to-chat URL to Gen Z Events (+201040206700)
+ * Builds a direct WhatsApp click-to-chat URL to Gen Z Events (+201016131000)
  * pre-filled with booking and payment details so fans can send their payment receipt.
  */
 export function buildTicketReceiptWhatsAppUrl(

@@ -374,9 +374,10 @@ service cloud.firestore {
         && isSuperAdmin();
     }
 
-    // 3. Bookings: PII-isolated ticket orders, offline sales & gate check-ins
-    //    - Super Admin: full confirm payment, check-in, offline sales, delete
-    //    - Gate Staff: offline sales create + paid-only check-in toggle (NEVER confirm payment or delete)
+    // 3. Bookings: PII-isolated ticket orders, offline sales & multi-ticket gate check-ins
+    //    - Verified Fans: online booking up to 20 passes (Pending, checkedInCount == 0, server-verified pricing)
+    //    - Super Admin: full confirm payment, multi-ticket check-in (1/N..N/N), offline sales, delete
+    //    - Gate Staff: offline sales create + paid-only multi-ticket check-in (NEVER confirm payment or delete)
     match /bookings/{bookingId} {
       allow get: if isVerified()
         && isValidId(bookingId)
@@ -390,12 +391,7 @@ service cloud.firestore {
         && incoming().updatedAt == request.time
         && exists(/databases/$(database)/documents/concerts/$(incoming().concertId))
         && (
-          isSuperAdmin() || (
-            isGateStaff()
-            && incoming().userId in ['offline-sale', 'offline_box_office']
-            && incoming().paymentMethod == 'Offline'
-            && incoming().paymentStatus in ['Paid', 'Pending']
-          ) || (
+          (
             incoming().userId == request.auth.uid
             && incoming().paymentMethod in ['InstaPay', 'Mobile Wallets']
             && incoming().quantity <= 20
@@ -407,6 +403,11 @@ service cloud.firestore {
             && incoming().approvedBy == ''
             && incoming().approvalMethod == ''
             && isValidFanPricing(incoming())
+          ) || isSuperAdmin() || (
+            isGateStaff()
+            && incoming().userId in ['offline-sale', 'offline_box_office']
+            && incoming().paymentMethod == 'Offline'
+            && incoming().paymentStatus in ['Paid', 'Pending']
           )
         );
       allow update: if isVerified()
@@ -422,6 +423,7 @@ service cloud.firestore {
             isGateStaff()
             && existing().paymentStatus == 'Paid'
             && incoming().paymentStatus == 'Paid'
+            && (!('checkedInCount' in existing()) || 'checkedInCount' in incoming())
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'checkedIn', 'checkedInCount', 'checkedInAt', 'approvedBy', 'approvalMethod', 'updatedAt'
             ])

@@ -239,5 +239,6 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
   it('aligns emailToDocId regex with client implementation and blocks anonymous accounts', () => {
     assert.match(rulesText, /replace\('\[\^a-z0-9_\\\\-\]',\s*'_'\)/);
     assert.doesNotMatch(rulesText, /isAuthenticatedFan/);
+    assert.match(rulesText, /!\('checkedInCount' in existing\(\)\)\s*\|\|\s*'checkedInCount' in incoming\(\)/);
   });
 });

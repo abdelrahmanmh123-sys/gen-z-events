@@ -1,5 +1,5 @@
 import type { AdminRole, OnlinePaymentMethodId, PaymentConfig, PaymentMethodId, TierId } from '../types';
-import { PAYMENT_PHONE_NUMBER } from '../data/defaults';
+import { PAYMENT_PHONE_NUMBER, PAYMENT_WHATSAPP_DISPLAY } from '../data/defaults';
 
 export type Language = 'en' | 'ar';
 export type TextDirection = 'ltr' | 'rtl';
@@ -79,7 +79,7 @@ export const TIER_COPY: Record<
       name: 'لاونج (Lounge)',
       perk: 'بجوار المسرح · خصوصية كاملة',
       compareLead: '',
-      details: 
+      details:
         'مساحة مميزة على جانبي المنطقة الأمامية بجوار المسرح، تجمع بين القرب من المسرح والخصوصية الكاملة بعيداً عن الزحمة.',
     },
   },
@@ -516,7 +516,7 @@ export const translations = {
     qrDownloadFailed: 'Could not download QR image.',
     whatsappLabel: 'WhatsApp',
     sendReceiptWhatsapp: 'Send Receipt (WhatsApp)',
-    whatsappReceiptAria: `Send payment receipt via WhatsApp to ${PAYMENT_PHONE_NUMBER}`,
+    whatsappReceiptAria: `Send payment receipt via WhatsApp to ${PAYMENT_WHATSAPP_DISPLAY}`,
     whatsappPaymentScreenshotNote:
       'Please send your payment screenshot on WhatsApp and our sales representative will confirm your payment.',
     cancelling: 'Cancelling...',
@@ -1006,7 +1006,7 @@ export const translations = {
     qrDownloadFailed: 'تعذر تحميل صورة رمز QR.',
     whatsappLabel: 'واتساب',
     sendReceiptWhatsapp: 'إرسال الإيصال (واتساب)',
-    whatsappReceiptAria: `إرسال إيصال الدفع عبر واتساب إلى ${PAYMENT_PHONE_NUMBER}`,
+    whatsappReceiptAria: `إرسال إيصال الدفع عبر واتساب إلى ${PAYMENT_WHATSAPP_DISPLAY}`,
     whatsappPaymentScreenshotNote:
       'برجاء ارسال اسكرين الدفع علي الواتساب وسيتم تأكيد الدفع من مسؤول البيع',
     cancelling: 'جارٍ الإلغاء...',

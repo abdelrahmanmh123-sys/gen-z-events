@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import { PAYMENT_METHODS, TICKET_TIERS } from '../data/defaults';
-import { formatFriendlyFirebaseError } from '../firebase';
+import { ensureFreshVerifiedToken, formatFriendlyFirebaseError } from '../firebase';
 import {
   adminSavePaymentConfig,
   createBooking,
@@ -235,6 +235,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
     setSubmitting(true);
     try {
+      await ensureFreshVerifiedToken(user);
       const id = `wl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
       await createWaitlistEntry({
         id,
@@ -282,6 +283,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
     setSubmitting(true);
     try {
+      await ensureFreshVerifiedToken(user);
       const bookingCode = generateBookingCode();
       await createBooking({
         bookingCode,

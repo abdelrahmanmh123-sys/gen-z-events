@@ -18,7 +18,14 @@ import { TicketsModal } from './components/TicketsModal';
 const LazyAdminWorkspace = lazy(() =>
   import('./components/admin/AdminWorkspace').then((mod) => ({ default: mod.AdminWorkspace })),
 );
-import { auth, db, formatFriendlyFirebaseError, handleFirestoreError, OperationType } from './firebase';
+import {
+  auth,
+  db,
+  ensureFreshVerifiedToken,
+  formatFriendlyFirebaseError,
+  handleFirestoreError,
+  OperationType,
+} from './firebase';
 import { useLanguage } from './i18n/LanguageContext';
 import { buildFooterSubtitle, getGenreLabel, localizeKnownMessage } from './i18n/translations';
 import {
@@ -102,6 +109,13 @@ export default function App() {
   // 1. Firebase Auth Observer
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (nextUser) => {
+      if (nextUser && isVerifiedFanAccount(nextUser)) {
+        try {
+          await ensureFreshVerifiedToken(nextUser);
+        } catch {
+          // keep cached session if offline
+        }
+      }
       setUser(nextUser);
       setAuthRevision((v) => v + 1);
       setAuthReady(true);

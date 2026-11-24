@@ -61,7 +61,7 @@ test('all InstaPay and Mobile Wallets numbers use +201040206700 and never legacy
     assert.ok(!translations[lang].footerSubtitle.includes('01041062000'));
     assert.ok(!translations[lang].footerSubtitle.includes('01554118042'));
     assert.ok(!translations[lang].footerSubtitle.includes('01007979070'));
-    assert.ok(translations[lang].whatsappReceiptAria.includes('+201040206700'));
+    assert.ok(translations[lang].whatsappReceiptAria.includes('+201016131000'));
     assert.ok(!translations[lang].whatsappReceiptAria.includes('01041062000'));
   }
 });

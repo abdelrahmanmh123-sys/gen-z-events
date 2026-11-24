@@ -363,3 +363,46 @@ test('multi-ticket scan verdict handles legacy bookings without checkedInCount a
   assert.equal(paidAndAdmitted.remainingEntries, 4);
   assert.equal(paidAndAdmitted.booking?.checkedIn, false);
 });
+
+test('evaluateGateQrScan allows a 20-ticket QR to be scanned 20 times showing (1/20) through (20/20) and rejects scan #21', () => {
+  let twentyBooking: Booking = {
+    ...BASE_BOOKINGS[0],
+    bookingCode: 'GZ-TWNTY20',
+    quantity: 20,
+    checkedIn: false,
+    checkedInCount: 0,
+    checkedInAt: '',
+    approvedBy: '',
+  };
+
+  for (let scanNum = 1; scanNum <= 20; scanNum++) {
+    const res = evaluateGateQrScan('GZ-TWNTY20', [twentyBooking], {
+      lang: 'en',
+      canConfirmPayments: false,
+    });
+    assert.equal(res.isValid, true);
+    assert.equal(res.admittedCount, scanNum);
+    assert.equal(res.totalQuantity, 20);
+    assert.equal(res.remainingEntries, 20 - scanNum);
+    assert.ok(res.verdictBadge.includes(`(${scanNum}/20)`));
+    assert.ok(res.headline.includes(`(${scanNum}/20)`));
+    assert.equal(res.booking?.checkedInCount, scanNum);
+    assert.equal(res.booking?.checkedIn, scanNum === 20);
+
+    twentyBooking = {
+      ...twentyBooking,
+      checkedInCount: scanNum,
+      checkedIn: scanNum >= 20,
+      checkedInAt: '9:00 PM',
+      approvedBy: 'Gate Lead',
+    };
+  }
+
+  const twentyFirst = evaluateGateQrScan('GZ-TWNTY20', [twentyBooking], {
+    lang: 'en',
+    canConfirmPayments: false,
+  });
+  assert.equal(twentyFirst.status, 'invalid_already_used');
+  assert.equal(twentyFirst.isValid, false);
+  assert.ok(twentyFirst.verdictBadge.includes('(20/20)'));
+});
