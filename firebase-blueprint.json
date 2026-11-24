@@ -69,6 +69,10 @@
           "type": "object",
           "description": "Optional map of custom #RRGGBB hex accent colors for Silver, Gold, VIP, and Lounge tiers."
         },
+        "tierSeatsLeft": {
+          "type": "object",
+          "description": "Optional map of specific remaining tickets for Silver, Gold, VIP, and Lounge tiers."
+        },
         "totalSeats": {
           "type": "integer"
         },
@@ -163,7 +167,7 @@
         },
         "quantity": {
           "type": "integer",
-          "description": "1-6 for online fan bookings; up to 500 for admin-imported offline group sales."
+          "description": "1-20 for online fan bookings; up to 500 for admin-imported offline group sales."
         },
         "unitPrice": {
           "type": "number"
@@ -197,6 +201,10 @@
         "checkedInAt": {
           "type": "string",
           "maxLength": 60
+        },
+        "scansUsed": {
+          "type": "integer",
+          "description": "Number of times this pass QR has been scanned for entry at gate (0 to quantity)."
         },
         "approvedBy": {
           "type": "string",
@@ -250,6 +258,7 @@
         "paymentStatus",
         "checkedIn",
         "checkedInAt",
+        "scansUsed",
         "approvedBy",
         "approvalMethod",
         "customerName",
@@ -527,6 +536,49 @@
         "lastSeen",
         "createdAt"
       ]
+    },
+    "PaymentConfig": {
+      "title": "PaymentConfig",
+      "description": "Live InstaPay and Vodafone Cash / Mobile Wallets transfer destinations managed by Super Admins.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "instapayNumber": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 80
+        },
+        "walletNumber": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 30
+        },
+        "updatedBy": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "instapayNumber",
+        "walletNumber",
+        "updatedBy",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -557,6 +609,10 @@
     "/adminSessions/{sessionId}": {
       "schema": { "$ref": "#/entities/AdminSession" },
       "description": "Active staff session heartbeats; listable only by verified Super Admins, self-managed by verified staff."
+    },
+    "/paymentConfig/{configId}": {
+      "schema": { "$ref": "#/entities/PaymentConfig" },
+      "description": "Publicly readable (single-doc get) InstaPay and Vodafone Cash transfer destinations; writable exclusively by verified Super Admins."
     }
   }
 }

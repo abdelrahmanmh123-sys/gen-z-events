@@ -70,7 +70,7 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     );
     assert.match(
       rulesText,
-      /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\[\s*'checkedIn',\s*'checkedInAt',\s*'approvedBy',\s*'approvalMethod',\s*'updatedAt'\s*\]\)/,
+      /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\[\s*'checkedIn',\s*'checkedInAt',\s*'scansUsed',\s*'approvedBy',\s*'approvalMethod',\s*'updatedAt'\s*\]\)/,
     );
     // Gate Staff offline create strictly scoped to offline-sale / offline_box_office + Offline
     assert.match(
@@ -80,7 +80,7 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     // Gate Staff concert update strictly scoped to seatsLeft decrement
     assert.match(
       rulesText,
-      /isGateStaff\(\)\s*&&\s*incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\['seatsLeft',\s*'updatedAt'\]\)\s*&&\s*incoming\(\)\.seatsLeft\s*<=\s*existing\(\)\.seatsLeft/,
+      /isGateStaff\(\)\s*&&\s*incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\['seatsLeft',\s*'tierSeatsLeft',\s*'updatedAt'\]\)\s*&&\s*incoming\(\)\.seatsLeft\s*<=\s*existing\(\)\.seatsLeft/,
     );
     // Gate Staff cannot list users, admins, or adminSessions
     assert.match(rulesText, /match\s+\/users\/\{userId\}[\s\S]*?allow\s+list:\s*if\s+isSuperAdmin\(\);/);
@@ -104,10 +104,11 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
 
   it('blocks self-approved Paid, checkedIn, Offline, or high-qty bookings on fan creation', () => {
     assert.match(rulesText, /incoming\(\)\.paymentMethod\s+in\s+\['InstaPay',\s*'Mobile Wallets'\]/);
-    assert.match(rulesText, /incoming\(\)\.quantity\s*<=\s*6/);
+    assert.match(rulesText, /incoming\(\)\.quantity\s*<=\s*20/);
     assert.match(rulesText, /incoming\(\)\.customerEmail\.size\(\)\s*>=\s*3/);
     assert.match(rulesText, /incoming\(\)\.paymentStatus\s*==\s*'Pending'/);
     assert.match(rulesText, /incoming\(\)\.checkedIn\s*==\s*false/);
+    assert.match(rulesText, /incoming\(\)\.scansUsed\s*==\s*0/);
     assert.match(rulesText, /incoming\(\)\.approvedBy\s*==\s*''/);
     assert.match(rulesText, /incoming\(\)\.approvalMethod\s*==\s*''/);
     assert.match(rulesText, /isValidFanPricing\(incoming\(\)\)/);
@@ -139,7 +140,7 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.ok(concertExistsChecks.length >= 2, 'Both bookings and waitlist must verify parent concert existence');
   });
 
-  it('blocks shadow field injection via hasOnly key allowlists on all 7 active entities', () => {
+  it('blocks shadow field injection via hasOnly key allowlists on all 8 active entities', () => {
     const validators = [
       'isValidConcert',
       'isValidBooking',
@@ -148,6 +149,7 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
       'isValidWaitlistEntry',
       'isValidAdminMember',
       'isValidAdminSession',
+      'isValidPaymentConfig',
     ];
     for (const fn of validators) {
       assert.ok(rulesText.includes(`function ${fn}(`), `Missing validator ${fn}`);
@@ -175,7 +177,7 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
   it('enforces path variable ID hardening, promo caps, and quantity bounds', () => {
     assert.match(rulesText, /function\s+isValidId\(id\)/);
     assert.match(rulesText, /data\.quantity\s*>=\s*1\s*&&\s*data\.quantity\s*<=\s*500/);
-    assert.match(rulesText, /incoming\(\)\.quantity\s*<=\s*6/);
+    assert.match(rulesText, /incoming\(\)\.quantity\s*<=\s*20/);
     assert.match(rulesText, /data\.value\s*>\s*0\s*&&\s*data\.value\s*<=\s*10000/);
     assert.match(rulesText, /data\.type\s*!=\s*'percent'\s*\|\|\s*data\.value\s*<=\s*90/);
   });
@@ -192,6 +194,12 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     const concertFn = extractFunctionBody('isValidConcert');
     assert.match(concertFn, /'tierColors'/);
     assert.match(concertFn, /!\('tierColors' in data\)\s*\|\|\s*isValidTierColors\(data\.tierColors\)/);
+
+    const tierSeatsFn = extractFunctionBody('isValidTierSeatsLeft');
+    assert.match(tierSeatsFn, /seats\.keys\(\)\.hasAll\(\['Silver',\s*'Gold',\s*'VIP',\s*'Lounge'\]\)/);
+    assert.match(tierSeatsFn, /seats\.keys\(\)\.hasOnly\(\['Silver',\s*'Gold',\s*'VIP',\s*'Lounge'\]\)/);
+    assert.match(concertFn, /'tierSeatsLeft'/);
+    assert.match(concertFn, /!\('tierSeatsLeft' in data\)\s*\|\|\s*isValidTierSeatsLeft\(data\.tierSeatsLeft\)/);
   });
 
   it('keeps legacy /updates and /settings (seed) collections permanently removed under default-deny', () => {
@@ -199,6 +207,30 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.doesNotMatch(rulesText, /isValidBackstagePost/);
     assert.doesNotMatch(rulesText, /match\s+\/settings\//);
     assert.doesNotMatch(rulesText, /isValidSiteSettings/);
+  });
+
+  it('enforces public single-doc get and Super Admin-only writes on /paymentConfig/{configId}', () => {
+    const paymentFn = extractFunctionBody('isValidPaymentConfig');
+    assert.match(paymentFn, /docId\s*==\s*'default'/);
+    assert.match(paymentFn, /isValidString\(data\.instapayNumber,\s*5,\s*80\)/);
+    assert.match(paymentFn, /isValidString\(data\.walletNumber,\s*6,\s*30\)/);
+
+    assert.match(
+      rulesText,
+      /match\s+\/paymentConfig\/\{configId\}[\s\S]*?allow\s+get:\s*if\s+isValidId\(configId\);/,
+    );
+    assert.match(
+      rulesText,
+      /match\s+\/paymentConfig\/\{configId\}[\s\S]*?allow\s+list:\s*if\s+isSuperAdmin\(\);/,
+    );
+    assert.match(
+      rulesText,
+      /match\s+\/paymentConfig\/\{configId\}[\s\S]*?allow\s+create:[\s\S]*?isSuperAdmin\(\);/,
+    );
+    assert.match(
+      rulesText,
+      /match\s+\/paymentConfig\/\{configId\}[\s\S]*?allow\s+update:[\s\S]*?isSuperAdmin\(\);/,
+    );
   });
 
   it('aligns emailToDocId regex with client implementation and blocks anonymous accounts', () => {

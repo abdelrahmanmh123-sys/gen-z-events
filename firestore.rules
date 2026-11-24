@@ -93,6 +93,16 @@ service cloud.firestore {
         && isValidHexColor(colors.Lounge);
     }
 
+    function isValidTierSeatsLeft(seats) {
+      return seats is map
+        && seats.keys().hasAll(['Silver', 'Gold', 'VIP', 'Lounge'])
+        && seats.keys().hasOnly(['Silver', 'Gold', 'VIP', 'Lounge'])
+        && seats.Silver is int && seats.Silver >= 0 && seats.Silver <= 50000
+        && seats.Gold is int && seats.Gold >= 0 && seats.Gold <= 50000
+        && seats.VIP is int && seats.VIP >= 0 && seats.VIP <= 50000
+        && seats.Lounge is int && seats.Lounge >= 0 && seats.Lounge <= 50000;
+    }
+
     function isValidPromoDiscount(promo, tier, subtotal, discountEgp) {
       let rawExpected = promo.type == 'percent'
         ? math.round((subtotal * (promo.value > 90 ? 90 : promo.value)) / 100.0)
@@ -108,6 +118,7 @@ service cloud.firestore {
       let concert = get(/databases/$(database)/documents/concerts/$(data.concertId)).data;
       let subtotal = concert.tierPrices[data.tier] * data.quantity;
       return data.quantity <= concert.seatsLeft
+        && (!('tierSeatsLeft' in concert) || data.quantity <= concert.tierSeatsLeft[data.tier])
         && data.unitPrice == concert.tierPrices[data.tier]
         && data.discountEgp >= 0
         && data.discountEgp <= subtotal
@@ -140,7 +151,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'id', 'title', 'artist', 'venue', 'isoDate', 'isoTime',
           'date', 'time', 'doors', 'genre', 'priceEgp', 'tierPrices',
-          'tierColors', 'totalSeats', 'seatsLeft', 'description', 'posterUrl',
+          'tierColors', 'tierSeatsLeft', 'totalSeats', 'seatsLeft', 'description', 'posterUrl',
           'createdAt', 'updatedAt'
         ])
         && data.id == docId
@@ -164,6 +175,7 @@ service cloud.firestore {
         && (data.tierPrices.VIP is int || data.tierPrices.VIP is float) && data.tierPrices.VIP >= 0 && data.tierPrices.VIP <= 100000
         && (data.tierPrices.Lounge is int || data.tierPrices.Lounge is float) && data.tierPrices.Lounge >= 0 && data.tierPrices.Lounge <= 100000
         && (!('tierColors' in data) || isValidTierColors(data.tierColors))
+        && (!('tierSeatsLeft' in data) || isValidTierSeatsLeft(data.tierSeatsLeft))
         && data.totalSeats is int && data.totalSeats >= 1 && data.totalSeats <= 50000
         && data.seatsLeft is int && data.seatsLeft >= 0 && data.seatsLeft <= data.totalSeats
         && isValidString(data.description, 4, 800)
@@ -177,7 +189,7 @@ service cloud.firestore {
           'bookingCode', 'userId', 'concertId', 'concertTitle', 'concertDate',
           'concertTime', 'concertVenue', 'tier', 'quantity', 'unitPrice',
           'promoCode', 'discountEgp', 'totalEgp', 'paymentMethod', 'transferRef',
-          'paymentStatus', 'checkedIn', 'checkedInAt', 'approvedBy',
+          'paymentStatus', 'checkedIn', 'checkedInAt', 'scansUsed', 'approvedBy',
           'approvalMethod', 'customerName', 'customerMobile', 'customerEmail',
           'createdAt', 'updatedAt'
         ])
@@ -185,7 +197,7 @@ service cloud.firestore {
           'bookingCode', 'userId', 'concertId', 'concertTitle', 'concertDate',
           'concertTime', 'concertVenue', 'tier', 'quantity', 'unitPrice',
           'promoCode', 'discountEgp', 'totalEgp', 'paymentMethod', 'transferRef',
-          'paymentStatus', 'checkedIn', 'checkedInAt', 'approvedBy',
+          'paymentStatus', 'checkedIn', 'checkedInAt', 'scansUsed', 'approvedBy',
           'approvalMethod', 'customerName', 'customerMobile', 'customerEmail',
           'createdAt', 'updatedAt'
         ])
@@ -209,6 +221,7 @@ service cloud.firestore {
         && data.paymentStatus is string && data.paymentStatus in ['Pending', 'Paid']
         && data.checkedIn is bool
         && isValidString(data.checkedInAt, 0, 60)
+        && data.scansUsed is int && data.scansUsed >= 0 && data.scansUsed <= data.quantity
         && isValidString(data.approvedBy, 0, 100)
         && isValidString(data.approvalMethod, 0, 40)
         && isValidString(data.customerName, 2, 100)
@@ -299,6 +312,21 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidPaymentConfig(data, docId) {
+      return data.keys().hasAll(['id', 'instapayNumber', 'walletNumber', 'updatedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'instapayNumber', 'walletNumber', 'updatedBy', 'createdAt', 'updatedAt'])
+        && data.id == docId
+        && docId == 'default'
+        && isValidId(data.id)
+        && isValidString(data.instapayNumber, 5, 80)
+        && data.instapayNumber.matches('^[+a-zA-Z0-9._@\\- ]+$')
+        && isValidString(data.walletNumber, 6, 30)
+        && data.walletNumber.matches('^[+0-9\\- ()]+$')
+        && isValidString(data.updatedBy, 0, 120)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // =========================================================================
     // COLLECTIONS
     // =========================================================================
@@ -322,7 +350,7 @@ service cloud.firestore {
         && (
           isSuperAdmin() || (
             isGateStaff()
-            && incoming().diff(existing()).affectedKeys().hasOnly(['seatsLeft', 'updatedAt'])
+            && incoming().diff(existing()).affectedKeys().hasOnly(['seatsLeft', 'tierSeatsLeft', 'updatedAt'])
             && incoming().seatsLeft <= existing().seatsLeft
           )
         );
@@ -377,11 +405,12 @@ service cloud.firestore {
           ) || (
             incoming().userId == request.auth.uid
             && incoming().paymentMethod in ['InstaPay', 'Mobile Wallets']
-            && incoming().quantity <= 6
+            && incoming().quantity <= 20
             && incoming().customerEmail.size() >= 3
             && incoming().paymentStatus == 'Pending'
             && incoming().checkedIn == false
             && incoming().checkedInAt == ''
+            && incoming().scansUsed == 0
             && incoming().approvedBy == ''
             && incoming().approvalMethod == ''
             && isValidFanPricing(incoming())
@@ -401,7 +430,7 @@ service cloud.firestore {
             && existing().paymentStatus == 'Paid'
             && incoming().paymentStatus == 'Paid'
             && incoming().diff(existing()).affectedKeys().hasOnly([
-              'checkedIn', 'checkedInAt', 'approvedBy', 'approvalMethod', 'updatedAt'
+              'checkedIn', 'checkedInAt', 'scansUsed', 'approvedBy', 'approvalMethod', 'updatedAt'
             ])
           )
         );
@@ -521,6 +550,30 @@ service cloud.firestore {
       allow delete: if isVerified()
         && isValidId(sessionId)
         && (isSuperAdmin() || (isGateStaff() && existing().userId == request.auth.uid));
+    }
+
+    // 8. Payment Config: Publicly readable (single-doc get) InstaPay & Vodafone Cash numbers; Super Admin-only writes
+    match /paymentConfig/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if isSuperAdmin();
+      allow create: if isVerified()
+        && isValidId(configId)
+        && configId == 'default'
+        && isValidPaymentConfig(incoming(), configId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isSuperAdmin();
+      allow update: if isVerified()
+        && isValidId(configId)
+        && configId == 'default'
+        && isValidPaymentConfig(incoming(), configId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && isSuperAdmin();
+      allow delete: if isVerified()
+        && isValidId(configId)
+        && isSuperAdmin();
     }
   }
 }

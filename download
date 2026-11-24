@@ -1,0 +1,15 @@
+node_modules/
+build/
+dist/
+coverage/
+.vercel/
+.playwright-cli/
+.aistudio/
+DRAFT_firestore.rules
+.DS_Store
+*.log
+.antigravity/
+.vscode/
+.agents/
+.env*
+!.env.example

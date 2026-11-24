@@ -1,6 +1,1 @@
-{
-  "name": "Gen Z Events",
-  "description": "Live concerts, VIP passes, promo codes, and instant QR gate check-in for Qena, Upper Egypt.",
-  "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
+{"name":"Untitled","description":"Live concerts, VIP passes, promo codes, and instant QR gate check-in for Qena, Upper Egypt.","requestFramePermissions":["camera"],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}
