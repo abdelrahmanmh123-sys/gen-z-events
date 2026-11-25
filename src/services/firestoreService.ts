@@ -21,6 +21,8 @@ import type {
   WaitlistEntry,
 } from '../types';
 import {
+  buildUndoPaymentPatch,
+  computeRestoredSeatsLeft,
   emailToDocId,
   getBookingCheckedInCount,
   PAYMENT_CONFIG_DOC_ID,
@@ -125,6 +127,44 @@ export async function adminConfirmPayment(
           updatedAt: serverTimestamp(),
         });
       }
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.bookingCode}`);
+  }
+}
+
+export async function adminUndoPayment(booking: Booking): Promise<boolean> {
+  const bookingRef = doc(db, 'bookings', booking.bookingCode);
+  const concertRef = doc(db, 'concerts', booking.concertId);
+  try {
+    return await runTransaction(db, async (tx) => {
+      const freshBookingSnap = await tx.get(bookingRef);
+      if (!freshBookingSnap.exists()) {
+        throw new Error('Booking no longer exists.');
+      }
+      const freshBooking = freshBookingSnap.data() as Booking;
+      if (freshBooking.paymentStatus !== 'Paid') {
+        return false;
+      }
+
+      const freshConcertSnap = await tx.get(concertRef);
+      tx.update(bookingRef, {
+        ...buildUndoPaymentPatch(),
+        updatedAt: serverTimestamp(),
+      });
+      if (freshConcertSnap.exists()) {
+        const freshConcert = freshConcertSnap.data() as Concert;
+        const nextSeats = computeRestoredSeatsLeft(
+          freshConcert.seatsLeft,
+          freshConcert.totalSeats,
+          freshBooking.quantity,
+        );
+        tx.update(concertRef, {
+          seatsLeft: nextSeats,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      return true;
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.bookingCode}`);
@@ -317,7 +357,11 @@ export async function adminDeleteBooking(booking: Booking): Promise<void> {
       if (freshBooking.paymentStatus === 'Paid' && freshConcertSnap.exists()) {
         const freshConcert = freshConcertSnap.data() as Concert;
         tx.update(concertRef, {
-          seatsLeft: Math.min(freshConcert.totalSeats, freshConcert.seatsLeft + freshBooking.quantity),
+          seatsLeft: computeRestoredSeatsLeft(
+            freshConcert.seatsLeft,
+            freshConcert.totalSeats,
+            freshBooking.quantity,
+          ),
           updatedAt: serverTimestamp(),
         });
       }

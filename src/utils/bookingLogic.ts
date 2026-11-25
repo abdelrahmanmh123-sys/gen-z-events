@@ -461,6 +461,41 @@ export function formatCheckInProgress(checkedInCount: number, quantity: number):
   return `(${count}/${total})`;
 }
 
+export function computeRestoredSeatsLeft(
+  currentSeatsLeft: number,
+  totalSeats: number,
+  quantity: number,
+): number {
+  const safeTotal = Math.max(0, Math.floor(Number(totalSeats) || 0));
+  const safeCurrent = Math.max(0, Math.floor(Number(currentSeatsLeft) || 0));
+  const safeQty = Math.max(0, Math.floor(Number(quantity) || 0));
+  return Math.min(safeTotal, safeCurrent + safeQty);
+}
+
+export function buildUndoPaymentPatch(): {
+  paymentStatus: 'Pending';
+  checkedIn: false;
+  checkedInCount: 0;
+  checkedInAt: '';
+  approvedBy: '';
+  approvalMethod: '';
+} {
+  return {
+    paymentStatus: 'Pending',
+    checkedIn: false,
+    checkedInCount: 0,
+    checkedInAt: '',
+    approvedBy: '',
+    approvalMethod: '',
+  };
+}
+
+export function canDisplayBookingQr(
+  booking: Pick<Booking, 'paymentStatus'> | null | undefined,
+): boolean {
+  return Boolean(booking && booking.paymentStatus === 'Paid');
+}
+
 export function computeAdminKpis(concerts: Concert[], bookings: Booking[]) {
   const liveEvents = concerts.length;
   const seatsRemaining = concerts.reduce((sum, c) => sum + Math.max(0, c.seatsLeft), 0);
@@ -488,6 +523,7 @@ export interface StaffPermissions {
   defaultTab: AdminTab;
   canGateCheckIn: boolean;
   canConfirmPayments: boolean;
+  canUndoPayments: boolean;
   canDeleteBookings: boolean;
   canAccessOfflineTickets: boolean;
   canViewRecentApprovals: boolean;
@@ -499,8 +535,8 @@ export interface StaffPermissions {
 
 /**
  * Resolves strict Role-Based Access Control (RBAC) capabilities for the Staff Portal.
- * - Super Admin: Full access across all 7 tabs, payment confirmation, deletions, and team management.
- * - Gate Staff: Strictly restricted to Gate QR Check-In (check-in only, no payment confirmation or deletion),
+ * - Super Admin: Full access across all 7 tabs, payment confirmation/undo, deletions, and team management.
+ * - Gate Staff: Strictly restricted to Gate QR Check-In (check-in only, no payment confirmation/undo or deletion),
  *   Offline Tickets, and Recent Payment & Gate Approvals log.
  */
 export function getStaffPermissions(role: AdminRole | null | undefined): StaffPermissions {
@@ -512,6 +548,7 @@ export function getStaffPermissions(role: AdminRole | null | undefined): StaffPe
       defaultTab: 'dashboard',
       canGateCheckIn: true,
       canConfirmPayments: true,
+      canUndoPayments: true,
       canDeleteBookings: true,
       canAccessOfflineTickets: true,
       canViewRecentApprovals: true,
@@ -529,6 +566,7 @@ export function getStaffPermissions(role: AdminRole | null | undefined): StaffPe
       defaultTab: 'checkin',
       canGateCheckIn: true,
       canConfirmPayments: false,
+      canUndoPayments: false,
       canDeleteBookings: false,
       canAccessOfflineTickets: true,
       canViewRecentApprovals: true,
@@ -545,6 +583,7 @@ export function getStaffPermissions(role: AdminRole | null | undefined): StaffPe
     defaultTab: 'checkin',
     canGateCheckIn: false,
     canConfirmPayments: false,
+    canUndoPayments: false,
     canDeleteBookings: false,
     canAccessOfflineTickets: false,
     canViewRecentApprovals: false,

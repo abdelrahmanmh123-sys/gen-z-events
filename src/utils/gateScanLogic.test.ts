@@ -4,6 +4,7 @@ import type { Booking } from '../types';
 import {
   buildAlreadyUsedVerdict,
   buildGateScanSuccessVerdict,
+  buildPaymentRevertedVerdict,
   buildUnreadableQrVerdict,
   evaluateGateQrScan,
   formatScannedCodePreview,
@@ -405,4 +406,44 @@ test('evaluateGateQrScan allows a 20-ticket QR to be scanned 20 times showing (1
   assert.equal(twentyFirst.status, 'invalid_already_used');
   assert.equal(twentyFirst.isValid, false);
   assert.ok(twentyFirst.verdictBadge.includes('(20/20)'));
+});
+
+test('buildPaymentRevertedVerdict locks reverted tickets cleanly in EN and AR and blocks subsequent gate scans', () => {
+  const paidCheckedBooking: Booking = {
+    ...BASE_BOOKINGS[0],
+    bookingCode: 'GZ-REV99',
+    quantity: 3,
+    paymentStatus: 'Paid',
+    checkedIn: false,
+    checkedInCount: 1,
+    checkedInAt: '8:10 PM',
+    approvedBy: 'Lead Organizer',
+    approvalMethod: 'Gate Pay + Entry',
+  };
+
+  const enVerdict = buildPaymentRevertedVerdict(paidCheckedBooking, 'en');
+  assert.equal(enVerdict.status, 'invalid_unpaid');
+  assert.equal(enVerdict.isValid, false);
+  assert.equal(enVerdict.tone, 'warn');
+  assert.ok(enVerdict.verdictBadge.includes('PAYMENT REVERTED'));
+  assert.equal(enVerdict.booking?.paymentStatus, 'Pending');
+  assert.equal(enVerdict.booking?.checkedIn, false);
+  assert.equal(enVerdict.booking?.checkedInCount, 0);
+  assert.equal(enVerdict.booking?.approvedBy, '');
+  assert.equal(enVerdict.admittedCount, 0);
+  assert.equal(enVerdict.remainingEntries, 3);
+
+  const arVerdict = buildPaymentRevertedVerdict(paidCheckedBooking, 'ar');
+  assert.equal(arVerdict.status, 'invalid_unpaid');
+  assert.equal(arVerdict.isValid, false);
+  assert.ok(arVerdict.verdictBadge.includes('التراجع عن الدفع'));
+  assert.ok(arVerdict.reason.includes('إخفاء رمز الـ QR'));
+
+  // Subsequent scan of the reverted booking must be rejected as unpaid
+  const rescan = evaluateGateQrScan('GZ-REV99', [enVerdict.booking!], {
+    lang: 'en',
+    canConfirmPayments: true,
+  });
+  assert.equal(rescan.status, 'invalid_unpaid');
+  assert.equal(rescan.isValid, false);
 });

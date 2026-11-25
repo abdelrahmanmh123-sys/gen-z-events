@@ -268,6 +268,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
               adminName={adminName}
               isVerifiedStaff={isVerifiedStaff}
               canConfirmPayments={permissions.canConfirmPayments}
+              canUndoPayments={permissions.canUndoPayments}
               canDeleteBookings={permissions.canDeleteBookings}
               onNotify={onNotify}
             />
@@ -278,6 +279,8 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
               bookings={bookings}
               adminName={adminName}
               adminEmail={adminEmail}
+              canConfirmPayments={permissions.canConfirmPayments}
+              canUndoPayments={permissions.canUndoPayments}
               canDeleteBookings={permissions.canDeleteBookings}
               canViewRevenueAnalytics={permissions.canViewRevenueAnalytics}
               onNotify={onNotify}

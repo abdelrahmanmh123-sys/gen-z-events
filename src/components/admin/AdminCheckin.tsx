@@ -21,6 +21,7 @@ import {
   adminDecrementCheckIn,
   adminDeleteBooking,
   adminScanCheckIn,
+  adminUndoPayment,
 } from '../../services/firestoreService';
 import { formatFriendlyFirebaseError } from '../../firebase';
 import type { Booking } from '../../types';
@@ -32,6 +33,7 @@ import {
 import {
   buildAlreadyUsedVerdict,
   buildGateScanSuccessVerdict,
+  buildPaymentRevertedVerdict,
   buildUnreadableQrVerdict,
   classifyCameraError,
   computeDecodedImageDimensions,
@@ -54,6 +56,7 @@ interface AdminCheckinProps {
   adminName: string;
   isVerifiedStaff: boolean;
   canConfirmPayments: boolean;
+  canUndoPayments: boolean;
   canDeleteBookings: boolean;
   onNotify: (msg: string) => void;
 }
@@ -65,6 +68,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   adminName,
   isVerifiedStaff,
   canConfirmPayments,
+  canUndoPayments,
   canDeleteBookings,
   onNotify,
 }) => {
@@ -77,6 +81,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   const [rosterSearch, setRosterSearch] = useState('');
   const [rosterFilter, setRosterFilter] = useState<RosterFilter>('all');
   const [confirmDeleteCode, setConfirmDeleteCode] = useState<string | null>(null);
+  const [confirmUndoPayCode, setConfirmUndoPayCode] = useState<string | null>(null);
   const [busyCode, setBusyCode] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -118,6 +123,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   const resetScanForNext = () => {
     setScanResult(null);
     setManualCode('');
+    setConfirmUndoPayCode(null);
     lastScannedRef.current = '';
     if (cooldownTimerRef.current !== null) {
       window.clearTimeout(cooldownTimerRef.current);
@@ -443,6 +449,43 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
         isAr
           ? `تم تأكيد الدفع للكود ${b.bookingCode} وفُتح رمز الـ QR.`
           : `Payment confirmed for ${b.bookingCode}. QR unlocked.`,
+      );
+    } catch (err) {
+      onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
+    } finally {
+      setBusyCode(null);
+    }
+  };
+
+  const handleUndoPay = async (b: Booking) => {
+    if (!canUndoPayments) return;
+    const hadCheckIns = getBookingCheckedInCount(b) > 0;
+    setBusyCode(b.bookingCode);
+    try {
+      const reverted = await adminUndoPayment(b);
+      setConfirmUndoPayCode(null);
+      if (!reverted) {
+        onNotify(
+          isAr
+            ? `الحجز ${b.bookingCode} بالفعل بانتظار مراجعة التحويل.`
+            : `Booking ${b.bookingCode} is already pending verification.`,
+        );
+        return;
+      }
+      playGateTone('warn', soundEnabled);
+      setScanResult((prev) =>
+        prev?.booking?.bookingCode === b.bookingCode
+          ? buildPaymentRevertedVerdict(b, lang)
+          : prev,
+      );
+      onNotify(
+        hadCheckIns
+          ? isAr
+            ? `تم التراجع عن الدفع وتسجيل الدخول للكود ${b.bookingCode} وإخفاء رمز الـ QR عن العميل مع الاحتفاظ بالحجز.`
+            : `Undid payment & check-in for ${b.bookingCode}. Fan QR is now hidden while keeping their ticket.`
+          : isAr
+            ? `تم التراجع عن تأكيد الدفع للكود ${b.bookingCode} وإخفاء رمز الـ QR عن العميل مع الاحتفاظ بالحجز.`
+            : `Payment confirmation undone for ${b.bookingCode}. Fan QR is now hidden while keeping their ticket.`,
       );
     } catch (err) {
       onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
@@ -943,6 +986,45 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
                       </span>
                     </button>
                   )}
+                {canUndoPayments &&
+                  scanResult.booking &&
+                  scanResult.booking.paymentStatus === 'Paid' &&
+                  (confirmUndoPayCode === scanResult.booking.bookingCode ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={busyCode === scanResult.booking.bookingCode}
+                        onClick={() => void handleUndoPay(scanResult.booking!)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-xs font-bold text-[#1A1202] transition-colors"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        {t.undoPayConfirm}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmUndoPayCode(null)}
+                        aria-label={t.cancelUndoPayAria}
+                        className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busyCode === scanResult.booking.bookingCode}
+                      onClick={() => {
+                        setConfirmDeleteCode(null);
+                        setConfirmUndoPayCode(scanResult.booking!.bookingCode);
+                      }}
+                      aria-label={`${t.undoPayAria} (${scanResult.booking.bookingCode})`}
+                      title={t.undoPayAria}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-amber-400/50 bg-amber-400/15 hover:bg-amber-400/25 disabled:opacity-60 text-xs font-semibold text-amber-200 transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      {t.undoPay}
+                    </button>
+                  ))}
                 <button
                   type="button"
                   onClick={resetScanForNext}
@@ -1147,6 +1229,42 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
                                   -1
                                 </button>
                               )}
+                              {canUndoPayments &&
+                                (confirmUndoPayCode === b.bookingCode ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      disabled={busyCode === b.bookingCode}
+                                      onClick={() => void handleUndoPay(b)}
+                                      className="px-2 py-1.5 rounded-md bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-[#1A1202] font-semibold"
+                                    >
+                                      {t.undoPayConfirm}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmUndoPayCode(null)}
+                                      aria-label={t.cancelUndoPayAria}
+                                      className="p-1.5 rounded-md text-slate-400 hover:text-white"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={busyCode === b.bookingCode}
+                                    onClick={() => {
+                                      setConfirmDeleteCode(null);
+                                      setConfirmUndoPayCode(b.bookingCode);
+                                    }}
+                                    aria-label={`${t.undoPayAria} (${b.bookingCode})`}
+                                    title={t.undoPayAria}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-amber-400/35 bg-amber-400/10 hover:bg-amber-400/20 disabled:opacity-60 text-amber-200 font-semibold transition-colors"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    {t.undoPay}
+                                  </button>
+                                ))}
                             </>
                           );
                         })()}
@@ -1174,7 +1292,10 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
                           ) : (
                             <button
                               type="button"
-                              onClick={() => setConfirmDeleteCode(b.bookingCode)}
+                              onClick={() => {
+                                setConfirmUndoPayCode(null);
+                                setConfirmDeleteCode(b.bookingCode);
+                              }}
                               aria-label={isAr ? `حذف ${b.bookingCode}` : `Delete ${b.bookingCode}`}
                               className="p-1.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
                             >

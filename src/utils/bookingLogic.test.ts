@@ -6,11 +6,14 @@ import {
   ADMIN_SESSION_TTL_MS,
   buildAttendeesCsv,
   buildCalendarIcs,
+  buildUndoPaymentPatch,
   calculateOrderTotals,
   canAccessAdminTab,
+  canDisplayBookingQr,
   computeAdjustedSeatsLeft,
   computeAdminKpis,
   computeCountdown,
+  computeRestoredSeatsLeft,
   DEFAULT_PAYMENT_CONFIG,
   emailToDocId,
   escapeCsvCell,
@@ -484,6 +487,7 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
       'team',
     ]);
     assert.equal(superPerms.canConfirmPayments, true);
+    assert.equal(superPerms.canUndoPayments, true);
     assert.equal(superPerms.canGateCheckIn, true);
     assert.equal(superPerms.canAccessOfflineTickets, true);
     assert.equal(superPerms.canViewRecentApprovals, true);
@@ -502,6 +506,7 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.equal(gatePerms.canAccessOfflineTickets, true);
     assert.equal(gatePerms.canViewRecentApprovals, true);
     assert.equal(gatePerms.canConfirmPayments, false);
+    assert.equal(gatePerms.canUndoPayments, false);
     assert.equal(gatePerms.canViewRevenueAnalytics, false);
     assert.equal(gatePerms.canDeleteBookings, false);
     assert.equal(gatePerms.canManageConcerts, false);
@@ -520,6 +525,7 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.deepEqual(noPerms.allowedTabs, []);
     assert.equal(noPerms.canGateCheckIn, false);
     assert.equal(noPerms.canConfirmPayments, false);
+    assert.equal(noPerms.canUndoPayments, false);
     assert.equal(canAccessAdminTab(null, 'checkin'), false);
   });
 
@@ -1239,6 +1245,71 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     const csv = buildAttendeesCsv([partialBooking, legacyBooking]);
     assert.ok(csv.includes('2/5'));
     assert.ok(csv.includes('3/3'));
+  });
+
+  it('undoes confirmed payments cleanly: keeps reservation intact, hides fan QR, resets check-ins, and restores seats safely', () => {
+    const paidBooking: Booking = {
+      bookingCode: 'GZ-UNDO01',
+      userId: 'fan-uid-1',
+      concertId: TEST_CONCERTS[0].id,
+      concertTitle: TEST_CONCERTS[0].title,
+      concertDate: TEST_CONCERTS[0].date,
+      concertTime: TEST_CONCERTS[0].time,
+      concertVenue: TEST_CONCERTS[0].venue,
+      tier: 'VIP',
+      quantity: 3,
+      unitPrice: 450,
+      promoCode: '',
+      discountEgp: 0,
+      totalEgp: 1350,
+      paymentMethod: 'InstaPay',
+      transferRef: '01012345678',
+      paymentStatus: 'Paid',
+      checkedIn: false,
+      checkedInCount: 2,
+      checkedInAt: '8:15 PM',
+      approvedBy: 'Lead Organizer',
+      approvalMethod: 'Desk Confirm',
+      customerName: 'Nour Hassan',
+      customerMobile: '01012345678',
+      customerEmail: 'nour@gmail.com',
+    };
+
+    assert.equal(canDisplayBookingQr(paidBooking), true);
+    assert.equal(canDisplayBookingQr(null), false);
+
+    const patch = buildUndoPaymentPatch();
+    assert.deepEqual(patch, {
+      paymentStatus: 'Pending',
+      checkedIn: false,
+      checkedInCount: 0,
+      checkedInAt: '',
+      approvedBy: '',
+      approvalMethod: '',
+    });
+
+    const reverted: Booking = { ...paidBooking, ...patch };
+    // Reservation ownership & details remain intact, while QR visibility and check-ins reset immediately
+    assert.equal(reverted.bookingCode, 'GZ-UNDO01');
+    assert.equal(reverted.userId, 'fan-uid-1');
+    assert.equal(reverted.quantity, 3);
+    assert.equal(reverted.totalEgp, 1350);
+    assert.equal(canDisplayBookingQr(reverted), false);
+    assert.equal(getBookingCheckedInCount(reverted), 0);
+    assert.equal(isBookingFullyCheckedIn(reverted), false);
+
+    // KPIs drop reverted tickets from paid revenue / sold / checked-in and count as pending
+    const kpis = computeAdminKpis(TEST_CONCERTS, [reverted]);
+    assert.equal(kpis.ticketsSold, 0);
+    assert.equal(kpis.totalRevenueEgp, 0);
+    assert.equal(kpis.checkedIn, 0);
+    assert.equal(kpis.pendingPayments, 1);
+
+    // Restoring concert seats clamps cleanly within [0, totalSeats]
+    assert.equal(computeRestoredSeatsLeft(417, 600, 3), 420);
+    assert.equal(computeRestoredSeatsLeft(599, 600, 5), 600);
+    assert.equal(computeRestoredSeatsLeft(-10, 600, 3), 3);
+    assert.equal(computeRestoredSeatsLeft(420, 600, -5), 420);
   });
 });
 

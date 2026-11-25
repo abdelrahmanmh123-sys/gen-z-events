@@ -15,6 +15,7 @@ import { cancelPendingBooking } from '../services/firestoreService';
 import { formatFriendlyFirebaseError } from '../firebase';
 import type { Booking, Concert } from '../types';
 import {
+  canDisplayBookingQr,
   formatCheckInProgress,
   getBookingCheckedInCount,
   getTierColorHex,
@@ -61,12 +62,34 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
 }) => {
   const { lang, t } = useLanguage();
   const [qrMap, setQrMap] = useState<Record<string, string>>({});
-  const [previewPng, setPreviewPng] = useState<{ code: string; dataUrl: string } | null>(null);
+  const [previewPng, setPreviewPng] = useState<{ code: string; dataUrl: string; wasPaid: boolean } | null>(null);
   const [zoomQrBooking, setZoomQrBooking] = useState<Booking | null>(null);
   const [generatingPngCode, setGeneratingPngCode] = useState<string | null>(null);
   const [downloadingQrCode, setDownloadingQrCode] = useState<string | null>(null);
   const [confirmCancelCode, setConfirmCancelCode] = useState<string | null>(null);
   const [busyCode, setBusyCode] = useState<string | null>(null);
+
+  const activeZoomBooking = zoomQrBooking
+    ? bookings.find((b) => b.bookingCode === zoomQrBooking.bookingCode && canDisplayBookingQr(b)) || null
+    : null;
+
+  const activePreviewPng = previewPng
+    ? (() => {
+        const live = bookings.find((b) => b.bookingCode === previewPng.code);
+        if (!live) return null;
+        if (previewPng.wasPaid && !canDisplayBookingQr(live)) return null;
+        return previewPng;
+      })()
+    : null;
+
+  useEffect(() => {
+    if (zoomQrBooking && !activeZoomBooking) {
+      setZoomQrBooking(null);
+    }
+    if (previewPng && !activePreviewPng) {
+      setPreviewPng(null);
+    }
+  }, [zoomQrBooking, activeZoomBooking, previewPng, activePreviewPng]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -80,9 +103,9 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (zoomQrBooking) {
+        if (activeZoomBooking) {
           setZoomQrBooking(null);
-        } else if (previewPng) {
+        } else if (activePreviewPng) {
           setPreviewPng(null);
         } else {
           onClose();
@@ -91,13 +114,29 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, previewPng, zoomQrBooking, onClose]);
+  }, [isOpen, activePreviewPng, activeZoomBooking, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
     let active = true;
+    const paidBookings = bookings.filter((b) => canDisplayBookingQr(b));
+    const paidCodeSet = new Set(paidBookings.map((b) => b.bookingCode));
+
+    // Prune any ticket whose payment was undone immediately so no cached QR lingers
+    setQrMap((prev) => {
+      let changed = false;
+      const pruned: Record<string, string> = {};
+      for (const [code, url] of Object.entries(prev)) {
+        if (paidCodeSet.has(code)) {
+          pruned[code] = url;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? pruned : prev;
+    });
+
     const loadQrs = async () => {
-      const paidBookings = bookings.filter((b) => b.paymentStatus === 'Paid');
       const entries = await Promise.all(
         paidBookings.map(async (b) => {
           try {
@@ -131,7 +170,11 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
       const liveBooking = resolveBookingConcertDetails(booking, show);
       const tierHex = getTierColorHex(show, liveBooking.tier);
       const dataUrl = await renderTicketPassPng(liveBooking, tierHex);
-      setPreviewPng({ code: liveBooking.bookingCode, dataUrl });
+      setPreviewPng({
+        code: liveBooking.bookingCode,
+        dataUrl,
+        wasPaid: canDisplayBookingQr(liveBooking),
+      });
     } catch {
       onNotify(t.pngRenderFailed);
     } finally {
@@ -140,7 +183,7 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
   };
 
   const handleDownloadOriginalQr = async (booking: Booking) => {
-    if (booking.paymentStatus !== 'Paid') return;
+    if (!canDisplayBookingQr(booking)) return;
     setDownloadingQrCode(booking.bookingCode);
     try {
       const qrDataUrl = await generateOriginalQrDataUrl(booking.bookingCode);
@@ -254,10 +297,10 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
             bookings.map((rawBooking) => {
               const show = concerts.find((c) => c.id === rawBooking.concertId);
               const b = resolveBookingConcertDetails(rawBooking, show);
-              const isPaid = b.paymentStatus === 'Paid';
+              const isPaid = canDisplayBookingQr(b);
               const tierHex = getTierColorHex(show, b.tier);
               const tierLabel = getTierCopy(b.tier, lang).name;
-              const qrUrl = qrMap[b.bookingCode];
+              const qrUrl = isPaid ? qrMap[b.bookingCode] : undefined;
               return (
                 <div
                   key={b.bookingCode}
@@ -531,12 +574,12 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
       </div>
 
       {/* Large Gate-Scan QR Lightbox */}
-      {zoomQrBooking && qrMap[zoomQrBooking.bookingCode] && (
+      {activeZoomBooking && qrMap[activeZoomBooking.bookingCode] && (
         <div
           className="fixed inset-0 z-[65] bg-black/90 flex items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
-          aria-label={`${t.gateScanReady} — ${zoomQrBooking.bookingCode}`}
+          aria-label={`${t.gateScanReady} — ${activeZoomBooking.bookingCode}`}
           onClick={(e) => {
             if (e.target === e.currentTarget) setZoomQrBooking(null);
           }}
@@ -556,29 +599,29 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
             <div className="p-6 flex flex-col items-center text-center space-y-4">
               <div className="w-72 h-72 max-w-full aspect-square rounded-2xl bg-white p-3.5 shadow-xl">
                 <img
-                  src={qrMap[zoomQrBooking.bookingCode]}
-                  alt={`QR ${zoomQrBooking.bookingCode}`}
+                  src={qrMap[activeZoomBooking.bookingCode]}
+                  alt={`QR ${activeZoomBooking.bookingCode}`}
                   className="w-full h-full block"
                 />
               </div>
               <div className="space-y-1">
                 <p className="font-mono-num text-xl font-bold text-white" dir="ltr">
-                  {zoomQrBooking.bookingCode}
+                  {activeZoomBooking.bookingCode}
                 </p>
-                <p className="text-xs text-slate-300">{zoomQrBooking.concertTitle}</p>
+                <p className="text-xs text-slate-300">{activeZoomBooking.concertTitle}</p>
                 <p className="text-[11px] text-slate-400">
-                  {getTierCopy(zoomQrBooking.tier, lang).name} · {zoomQrBooking.quantity}x
+                  {getTierCopy(activeZoomBooking.tier, lang).name} · {activeZoomBooking.quantity}x
                 </p>
               </div>
               <div className="w-full flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={downloadingQrCode === zoomQrBooking.bookingCode}
-                  onClick={() => void handleDownloadOriginalQr(zoomQrBooking)}
+                  disabled={downloadingQrCode === activeZoomBooking.bookingCode}
+                  onClick={() => void handleDownloadOriginalQr(activeZoomBooking)}
                   className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-white/15 bg-white/[0.06] hover:bg-white/[0.12] disabled:opacity-60 text-xs font-semibold text-white transition-colors"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  {downloadingQrCode === zoomQrBooking.bookingCode ? t.qrDownloading : t.downloadQr}
+                  {downloadingQrCode === activeZoomBooking.bookingCode ? t.qrDownloading : t.downloadQr}
                 </button>
                 <button
                   type="button"
@@ -594,12 +637,12 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
       )}
 
       {/* PNG E-Pass Preview Sub-Modal */}
-      {previewPng && (
+      {activePreviewPng && (
         <div
           className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
-          aria-label={`${t.ePassPreviewTitle} ${previewPng.code}`}
+          aria-label={`${t.ePassPreviewTitle} ${activePreviewPng.code}`}
           onClick={(e) => {
             if (e.target === e.currentTarget) setPreviewPng(null);
           }}
@@ -607,7 +650,7 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
           <div className="max-w-4xl w-full bg-[#101218] border border-white/15 rounded-xl overflow-hidden shadow-2xl">
             <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between">
               <p className="font-mono-num text-sm font-bold text-white">
-                {t.ePassPreviewTitle} · <span dir="ltr">{previewPng.code}</span>
+                {t.ePassPreviewTitle} · <span dir="ltr">{activePreviewPng.code}</span>
               </p>
               <button
                 type="button"
@@ -620,8 +663,8 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
             </div>
             <div className="p-5 space-y-4">
               <img
-                src={previewPng.dataUrl}
-                alt={`${t.ePassPreviewTitle} ${previewPng.code}`}
+                src={activePreviewPng.dataUrl}
+                alt={`${t.ePassPreviewTitle} ${activePreviewPng.code}`}
                 className="w-full rounded-lg border border-white/10"
               />
               <div className="flex justify-end gap-2">
@@ -635,7 +678,7 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
                 <button
                   type="button"
                   onClick={() =>
-                    triggerDataUrlDownload(`${previewPng.code}-genz-pass.png`, previewPng.dataUrl)
+                    triggerDataUrlDownload(`${activePreviewPng.code}-genz-pass.png`, activePreviewPng.dataUrl)
                   }
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white hover:bg-neutral-200 text-xs font-semibold text-[#08090C] transition-colors"
                 >

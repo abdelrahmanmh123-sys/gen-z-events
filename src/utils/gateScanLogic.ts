@@ -1,6 +1,10 @@
 import { getPaymentMethodLabel, getTierCopy, type Language } from '../i18n/translations';
 import type { Booking } from '../types';
-import { formatCheckInProgress, getBookingCheckedInCount } from './bookingLogic';
+import {
+  buildUndoPaymentPatch,
+  formatCheckInProgress,
+  getBookingCheckedInCount,
+} from './bookingLogic';
 
 export type GateScanStatus =
   | 'valid_ready'
@@ -285,6 +289,34 @@ export function evaluateGateQrScan(
   }
 
   return buildGateScanSuccessVerdict(found, currentCount + 1, { lang: options.lang });
+}
+
+/**
+ * Builds an explicit warn verdict after staff reverts a confirmed payment back to Pending.
+ * The reservation stays intact while the fan's QR is locked again immediately.
+ */
+export function buildPaymentRevertedVerdict(found: Booking, lang: Language): GateScanVerdict {
+  const isAr = lang === 'ar';
+  const total = Math.max(1, Math.floor(found.quantity || 1));
+  const revertedBooking: Booking = {
+    ...found,
+    ...buildUndoPaymentPatch(),
+  };
+  return {
+    status: 'invalid_unpaid',
+    isValid: false,
+    tone: 'warn',
+    verdictBadge: isAr ? 'تم التراجع عن الدفع — QR مقفل' : 'PAYMENT REVERTED — QR LOCKED',
+    headline: `${found.customerName} (${found.bookingCode})`,
+    reason: isAr
+      ? 'تم التراجع عن تأكيد الدفع وإعادة التذكرة لحالة «بانتظار مراجعة التحويل». تم إخفاء رمز الـ QR عن العميل فوراً مع الاحتفاظ بحجزه.'
+      : 'Payment confirmation was undone and this ticket is back to Pending Verification. The fan QR code is now hidden immediately while keeping their reservation intact.',
+    scannedCode: found.bookingCode,
+    booking: revertedBooking,
+    admittedCount: 0,
+    totalQuantity: total,
+    remainingEntries: total,
+  };
 }
 
 /**

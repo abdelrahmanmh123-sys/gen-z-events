@@ -5,6 +5,7 @@ import {
   Download,
   FileSpreadsheet,
   Plus,
+  RotateCcw,
   Search,
   Store,
   Trash2,
@@ -15,10 +16,12 @@ import { TICKET_TIERS } from '../../data/defaults';
 import { formatFriendlyFirebaseError } from '../../firebase';
 import {
   adminBulkImportOfflineBookings,
+  adminConfirmPayment,
   adminCreateOfflineBooking,
   adminDecrementCheckIn,
   adminDeleteBooking,
   adminScanCheckIn,
+  adminUndoPayment,
 } from '../../services/firestoreService';
 import type { Booking, Concert, TierId } from '../../types';
 import {
@@ -53,6 +56,8 @@ interface AdminOfflineTicketsProps {
   bookings: Booking[];
   adminName: string;
   adminEmail: string;
+  canConfirmPayments: boolean;
+  canUndoPayments: boolean;
   canDeleteBookings: boolean;
   canViewRevenueAnalytics: boolean;
   onNotify: (msg: string) => void;
@@ -63,6 +68,8 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
   bookings,
   adminName,
   adminEmail,
+  canConfirmPayments,
+  canUndoPayments,
   canDeleteBookings,
   canViewRevenueAnalytics,
   onNotify,
@@ -132,6 +139,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
   const [concertFilter, setConcertFilter] = useState<string>('all');
   const [busyCode, setBusyCode] = useState<string | null>(null);
   const [confirmDeleteCode, setConfirmDeleteCode] = useState<string | null>(null);
+  const [confirmUndoPayCode, setConfirmUndoPayCode] = useState<string | null>(null);
 
   const offlineBookings = useMemo(
     () => bookings.filter((b) => b.paymentMethod === 'Offline'),
@@ -355,6 +363,49 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
             : `Reverted check-in for ${b.bookingCode}${counterSuffix}.`,
         );
       }
+    } catch (err) {
+      onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
+    } finally {
+      setBusyCode(null);
+    }
+  };
+
+  const handleConfirmOfflinePay = async (b: Booking) => {
+    if (!canConfirmPayments) return;
+    setBusyCode(b.bookingCode);
+    try {
+      await adminConfirmPayment(b, adminName, 'Offline Desk Confirm');
+      onNotify(
+        isAr
+          ? `تم تأكيد الدفع للسجل الأوفلاين ${b.bookingCode}.`
+          : `Confirmed payment for offline record ${b.bookingCode}.`,
+      );
+    } catch (err) {
+      onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
+    } finally {
+      setBusyCode(null);
+    }
+  };
+
+  const handleUndoOfflinePay = async (b: Booking) => {
+    if (!canUndoPayments) return;
+    setBusyCode(b.bookingCode);
+    try {
+      const reverted = await adminUndoPayment(b);
+      setConfirmUndoPayCode(null);
+      if (!reverted) {
+        onNotify(
+          isAr
+            ? `السجل ${b.bookingCode} بالفعل بانتظار تأكيد الدفع.`
+            : `Record ${b.bookingCode} is already pending payment.`,
+        );
+        return;
+      }
+      onNotify(
+        isAr
+          ? `تم التراجع عن تأكيد الدفع للسجل ${b.bookingCode} مع الاحتفاظ بالتذكرة.`
+          : `Payment confirmation undone for ${b.bookingCode} while keeping the record.`,
+      );
     } catch (err) {
       onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
     } finally {
@@ -963,9 +1014,20 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
                       <td className="px-4 py-3 text-end whitespace-nowrap">
                         <div className="inline-flex items-center gap-1.5">
                           {b.paymentStatus !== 'Paid' ? (
-                            <span className="px-2.5 py-1.5 rounded-md border border-amber-400/25 bg-amber-400/5 text-[11px] font-medium text-amber-200/80">
-                              {t.awaitingSuperAdmin}
-                            </span>
+                            canConfirmPayments ? (
+                              <button
+                                type="button"
+                                disabled={busyCode === b.bookingCode}
+                                onClick={() => void handleConfirmOfflinePay(b)}
+                                className="px-2.5 py-1.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 font-semibold"
+                              >
+                                {t.confirmPay}
+                              </button>
+                            ) : (
+                              <span className="px-2.5 py-1.5 rounded-md border border-amber-400/25 bg-amber-400/5 text-[11px] font-medium text-amber-200/80">
+                                {t.awaitingSuperAdmin}
+                              </span>
+                            )
                           ) : (() => {
                             const total = Math.max(1, Math.floor(b.quantity || 1));
                             const scanned = getBookingCheckedInCount(b);
@@ -1008,6 +1070,42 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
                                     -1
                                   </button>
                                 )}
+                                {canUndoPayments &&
+                                  (confirmUndoPayCode === b.bookingCode ? (
+                                    <span className="inline-flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        disabled={busyCode === b.bookingCode}
+                                        onClick={() => void handleUndoOfflinePay(b)}
+                                        className="px-2 py-1.5 rounded-md bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-[#1A1202] font-semibold"
+                                      >
+                                        {t.undoPayConfirm}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmUndoPayCode(null)}
+                                        aria-label={t.cancelUndoPayAria}
+                                        className="p-1.5 rounded-md text-slate-400 hover:text-white"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled={busyCode === b.bookingCode}
+                                      onClick={() => {
+                                        setConfirmDeleteCode(null);
+                                        setConfirmUndoPayCode(b.bookingCode);
+                                      }}
+                                      aria-label={`${t.undoPayAria} (${b.bookingCode})`}
+                                      title={t.undoPayAria}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-amber-400/35 bg-amber-400/10 hover:bg-amber-400/20 disabled:opacity-60 text-amber-200 font-semibold transition-colors"
+                                    >
+                                      <RotateCcw className="w-3 h-3" />
+                                      {t.undoPay}
+                                    </button>
+                                  ))}
                               </>
                             );
                           })()}
@@ -1035,7 +1133,10 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => setConfirmDeleteCode(b.bookingCode)}
+                                onClick={() => {
+                                  setConfirmUndoPayCode(null);
+                                  setConfirmDeleteCode(b.bookingCode);
+                                }}
                                 aria-label={isAr ? `حذف ${b.bookingCode}` : `Delete ${b.bookingCode}`}
                                 className="p-1.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
                               >

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Lock, Maximize2 } from 'lucide-react';
 import type { Booking } from '../types';
+import { canDisplayBookingQr } from '../utils/bookingLogic';
 import { getTicketDesignForTier, TICKET_STUB_SLOT } from '../utils/ticketDesign';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -20,7 +21,7 @@ export const TicketVisualCard: React.FC<TicketVisualCardProps> = ({
   const [imgLoaded, setImgLoaded] = useState(false);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const design = getTicketDesignForTier(booking.tier);
-  const isPaid = booking.paymentStatus === 'Paid';
+  const isPaid = canDisplayBookingQr(booking);
 
   useEffect(() => {
     setImgFailed(false);
