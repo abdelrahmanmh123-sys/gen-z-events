@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { ArrowRight, Calendar, MapPin, Tag } from 'lucide-react';
 import { HERO_IMAGE_PATH } from '../data/defaults';
 import { useLanguage } from '../i18n/LanguageContext';
-import { formatCurrencyEgp } from '../i18n/translations';
+import { formatCurrencyEgp, formatPromoTiersSummary } from '../i18n/translations';
 import type { Concert, Promo } from '../types';
-import { computeCountdown, getTierUnitPrice } from '../utils/bookingLogic';
+import { computeCountdown, getTierUnitPrice, normalizePromoTiers } from '../utils/bookingLogic';
 
 interface HeroSectionProps {
   nextConcert: Concert | null;
@@ -179,6 +179,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     {promo.code}
                   </span>
                   <span className="text-slate-400">{promo.label}</span>
+                  {normalizePromoTiers(promo.tiers).length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/8 border border-white/10 text-slate-300">
+                      {formatPromoTiersSummary(promo.tiers, lang)}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -112,6 +112,7 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
   const [syncing, setSyncing] = useState<boolean>(false);
   const [importing, setImporting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const syncingRef = useRef<boolean>(false);
 
   // Keep local state in sync with in-memory token changes (e.g. sign-out or 401 expiry)
   useEffect(() => {
@@ -124,6 +125,16 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
   const parsedFormRef = useMemo(() => extractGoogleFormId(formInput), [formInput]);
   const activeFormId = parsedFormRef.formId;
 
+  // Clear previously loaded form schema/responses if staff switches to a different Form ID
+  useEffect(() => {
+    if (formSchema && formSchema.formId && activeFormId !== formSchema.formId) {
+      setFormSchema(null);
+      setRawResponses([]);
+      setMapping(null);
+      setLastSyncedAt('');
+    }
+  }, [activeFormId, formSchema]);
+
   const openFormUrl = useMemo(() => {
     if (formSchema?.responderUri && isSafeHttpsUrl(formSchema.responderUri)) {
       return formSchema.responderUri;
@@ -135,6 +146,7 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
 
   const performSync = useCallback(
     async (tokenOverride?: string, silent = false) => {
+      if (syncingRef.current) return;
       const token = tokenOverride || getCachedFormsAccessToken();
       if (!token) {
         setErrorMsg(
@@ -157,6 +169,7 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
         return;
       }
 
+      syncingRef.current = true;
       setSyncing(true);
       setErrorMsg('');
       try {
@@ -227,6 +240,7 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
           );
         }
       } finally {
+        syncingRef.current = false;
         setSyncing(false);
       }
     },
@@ -309,12 +323,12 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
             : ` (${res.skippedDuplicateCount} already synced)`
           : '';
       const revPart = canViewRevenueAnalytics
-        ? ` · ${formatCurrencyEgp(syncResult.newRevenueEgp, lang)}`
+        ? ` · ${formatCurrencyEgp(res.importedRevenueEgp, lang)}`
         : '';
       onNotify(
         isAr
-          ? `تم استيراد ${res.importedCount} تذكرة جديدة من Google Form (${syncResult.newTicketsCount.toLocaleString()} تذكرة${revPart})${dupSuffix}.`
-          : `Imported ${res.importedCount} new Google Form ticket(s) (${syncResult.newTicketsCount.toLocaleString()} passes${revPart})${dupSuffix}.`,
+          ? `تم استيراد ${res.importedCount} تذكرة جديدة من Google Form (${res.importedTickets.toLocaleString()} تذكرة${revPart})${dupSuffix}.`
+          : `Imported ${res.importedCount} new Google Form ticket(s) (${res.importedTickets.toLocaleString()} passes${revPart})${dupSuffix}.`,
       );
     } catch (err: unknown) {
       const friendly = localizeKnownMessage(formatFriendlyFirebaseError(err), lang);

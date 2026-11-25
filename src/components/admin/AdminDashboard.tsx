@@ -76,7 +76,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const recentApprovals = useMemo(() => {
     return bookings
-      .filter((b) => b.approvedBy || getBookingCheckedInCount(b) > 0)
+      .filter((b) => (b.paymentStatus === 'Paid' && Boolean(b.approvedBy)) || getBookingCheckedInCount(b) > 0)
       .slice(0, 12);
   }, [bookings]);
 

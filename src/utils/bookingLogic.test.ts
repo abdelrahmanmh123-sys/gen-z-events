@@ -44,6 +44,8 @@ import {
   normalizeEgyptianMobile,
   normalizeHexColor,
   normalizeOfflineMobile,
+  normalizePromoTiers,
+  normalizeScheduleDateTime,
   normalizeTierValue,
   OFFLINE_USER_ID,
   parseBoundedIntInput,
@@ -55,6 +57,7 @@ import {
   sanitizeSpreadsheetCell,
   sortByCreatedAtDesc,
   suggestTierPrices,
+  togglePromoTier,
   validateAndBuildConcertEditPayload,
   validateBookingInput,
   validateEgyptianMobile,
@@ -1310,6 +1313,89 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.equal(computeRestoredSeatsLeft(599, 600, 5), 600);
     assert.equal(computeRestoredSeatsLeft(-10, 600, 3), 3);
     assert.equal(computeRestoredSeatsLeft(420, 600, -5), 420);
+  });
+
+  it('normalizes mobile HH:MM:SS schedule times and prevents unpaid offline rows from importing as checked-in or approved', () => {
+    assert.deepEqual(normalizeScheduleDateTime('2026-12-20', '21:30:00'), {
+      valid: true,
+      isoDate: '2026-12-20',
+      isoTime: '21:30',
+    });
+    assert.equal(normalizeScheduleDateTime('2026-02-30', '20:00').valid, false);
+    assert.equal(normalizeScheduleDateTime('2026-12-20', '24:00').valid, false);
+
+    const parsed = parseOfflineTicketRows(
+      [
+        {
+          Name: 'Pending Guest',
+          Mobile: '01011112222',
+          Tier: 'Silver',
+          Qty: 2,
+          Status: 'Pending',
+          'Checked In': 'Yes',
+        },
+      ],
+      TEST_CONCERTS[0],
+      'Lead Organizer',
+      [],
+    );
+    assert.equal(parsed.validBookings.length, 1);
+    const pendingRow = parsed.validBookings[0];
+    assert.equal(pendingRow.paymentStatus, 'Pending');
+    assert.equal(pendingRow.checkedIn, false);
+    assert.equal(pendingRow.checkedInCount, 0);
+    assert.equal(pendingRow.checkedInAt, '');
+    assert.equal(pendingRow.approvedBy, '');
+    assert.equal(pendingRow.approvalMethod, '');
+  });
+
+  it('normalizes, toggles, and evaluates individual and multi-tier promo code scopes cleanly', () => {
+    // Normalization preserves canonical order, deduplicates, and collapses empty or all-4 to []
+    assert.deepEqual(normalizePromoTiers([]), []);
+    assert.deepEqual(normalizePromoTiers(['Lounge', 'Silver', 'Lounge']), ['Silver', 'Lounge']);
+    assert.deepEqual(normalizePromoTiers(['Silver', 'Gold', 'VIP', 'Lounge']), []);
+
+    // Toggling from All Pass Tiers ([]) selects just that individual tier
+    assert.deepEqual(togglePromoTier([], 'Silver'), ['Silver']);
+    assert.deepEqual(togglePromoTier([], 'Gold'), ['Gold']);
+    assert.deepEqual(togglePromoTier([], 'VIP'), ['VIP']);
+    assert.deepEqual(togglePromoTier([], 'Lounge'), ['Lounge']);
+
+    // Multi-tier toggle adds/removes tiers and snaps back to [] when empty or all 4 are picked
+    assert.deepEqual(togglePromoTier(['Silver'], 'Gold'), ['Silver', 'Gold']);
+    assert.deepEqual(togglePromoTier(['Silver', 'Gold'], 'Silver'), ['Gold']);
+    assert.deepEqual(togglePromoTier(['Gold'], 'Gold'), []);
+    assert.deepEqual(togglePromoTier(['Silver', 'Gold', 'VIP'], 'Lounge'), []);
+
+    // Individual tier promos strictly match only their target tier
+    const individualPromos: Promo[] = [
+      { code: 'SILVER10', type: 'percent', value: 10, tiers: ['Silver'], label: '10% Off', active: true },
+      { code: 'GOLD15', type: 'percent', value: 15, tiers: ['Gold'], label: '15% Off', active: true },
+      { code: 'FANPIT50', type: 'flat', value: 50, tiers: ['VIP'], label: '50 EGP Off', active: true },
+      { code: 'LOUNGE100', type: 'flat', value: 100, tiers: ['Lounge'], label: '100 EGP Off', active: true },
+      { code: 'TRIO20', type: 'percent', value: 20, tiers: ['Silver', 'Gold', 'VIP'], label: '20% Off', active: true },
+    ];
+
+    assert.equal(evaluatePromo('SILVER10', 'Silver', 200, individualPromos).valid, true);
+    assert.equal(evaluatePromo('SILVER10', 'Gold', 300, individualPromos).valid, false);
+    assert.equal(
+      evaluatePromo('SILVER10', 'Gold', 300, individualPromos).message,
+      'SILVER10 applies only to Silver passes.',
+    );
+
+    assert.equal(evaluatePromo('GOLD15', 'Gold', 400, individualPromos).valid, true);
+    assert.equal(evaluatePromo('GOLD15', 'Silver', 200, individualPromos).valid, false);
+
+    assert.equal(evaluatePromo('FANPIT50', 'VIP', 500, individualPromos).valid, true);
+    assert.equal(evaluatePromo('FANPIT50', 'Lounge', 700, individualPromos).valid, false);
+
+    assert.equal(evaluatePromo('LOUNGE100', 'Lounge', 700, individualPromos).valid, true);
+    assert.equal(evaluatePromo('LOUNGE100', 'VIP', 500, individualPromos).valid, false);
+
+    const trioMiss = evaluatePromo('TRIO20', 'Lounge', 700, individualPromos);
+    assert.equal(trioMiss.valid, false);
+    assert.equal(trioMiss.message, 'TRIO20 applies only to Silver, Gold & VIP passes.');
+    assert.equal(evaluatePromo('TRIO20', 'Gold', 400, individualPromos).valid, true);
   });
 });
 

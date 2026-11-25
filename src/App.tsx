@@ -18,18 +18,18 @@ import { TicketsModal } from './components/TicketsModal';
 const LazyAdminWorkspace = lazy(() =>
   import('./components/admin/AdminWorkspace').then((mod) => ({ default: mod.AdminWorkspace })),
 );
+import { PRIMARY_ADMIN_EMAIL } from './data/defaults';
 import {
   auth,
   db,
   ensureFreshVerifiedToken,
   formatFriendlyFirebaseError,
-  handleFirestoreError,
+  logFirestoreError,
   OperationType,
 } from './firebase';
 import { useLanguage } from './i18n/LanguageContext';
 import { buildFooterSubtitle, getGenreLabel, localizeKnownMessage } from './i18n/translations';
 import {
-  checkIsEmailAdmin,
   createAdminSession,
   removeAdminSession,
   touchAdminSession,
@@ -48,6 +48,7 @@ import type {
 } from './types';
 import {
   DEFAULT_PAYMENT_CONFIG,
+  emailToDocId,
   filterAndSortConcerts,
   getNextUpcomingConcert,
   isEmailVerifiedAdminCandidate,
@@ -99,6 +100,10 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const sessionIdRef = useRef(`sess-${Math.random().toString(36).slice(2, 10)}`);
+  const adminPortalOpenRef = useRef(false);
+  adminPortalOpenRef.current = adminPortalOpen;
+  const langRef = useRef(lang);
+  langRef.current = lang;
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -119,16 +124,69 @@ export default function App() {
       setUser(nextUser);
       setAuthRevision((v) => v + 1);
       setAuthReady(true);
-      if (isEmailVerifiedAdminCandidate(nextUser)) {
-        const member = await checkIsEmailAdmin(nextUser?.email);
-        setAdminMember(member);
-      } else {
+      if (!isEmailVerifiedAdminCandidate(nextUser)) {
         setAdminMember(null);
         setAdminPortalOpen(false);
       }
     });
     return () => unsub();
   }, []);
+
+  // 1b. Live Staff Role & Access Subscription (instantly reflects promotions, demotions, or revocations)
+  useEffect(() => {
+    if (!authReady || !user || !isEmailVerifiedAdminCandidate(user)) {
+      setAdminMember(null);
+      setAdminPortalOpen(false);
+      return;
+    }
+
+    const lowerEmail = (user.email || '').trim().toLowerCase();
+    if (lowerEmail === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
+      setAdminMember({
+        id: emailToDocId(lowerEmail),
+        name: 'Lead Organizer',
+        email: lowerEmail,
+        role: 'Super Admin',
+        addedBy: 'System',
+      });
+      return;
+    }
+
+    const adminDocId = emailToDocId(lowerEmail);
+    if (adminDocId.length < 2 || adminDocId.length > 128) {
+      setAdminMember(null);
+      setAdminPortalOpen(false);
+      return;
+    }
+
+    const unsubAdminRole = onSnapshot(
+      doc(db, 'admins', adminDocId),
+      (snap) => {
+        if (snap.exists()) {
+          setAdminMember(snap.data() as AdminMember);
+        } else {
+          setAdminMember(null);
+          if (adminPortalOpenRef.current) {
+            setAdminPortalOpen(false);
+            showToast(
+              langRef.current === 'ar'
+                ? 'تم تحديث أو إلغاء صلاحية الوصول إلى لوحة الإدارة.'
+                : 'Your Staff Portal access was revoked.',
+            );
+          }
+        }
+      },
+      () => {
+        // Non-staff or transient read error: fail closed cleanly
+        setAdminMember(null);
+        if (adminPortalOpenRef.current) {
+          setAdminPortalOpen(false);
+        }
+      },
+    );
+
+    return () => unsubAdminRole();
+  }, [authReady, user?.uid, user?.email, user?.emailVerified, authRevision, showToast]);
 
   const handleUserMutated = useCallback(() => {
     setUser(auth.currentUser);
@@ -145,8 +203,6 @@ export default function App() {
       setUser(refreshed);
       setAuthRevision((v) => v + 1);
       if (isEmailVerifiedAdminCandidate(refreshed)) {
-        const member = await checkIsEmailAdmin(refreshed?.email);
-        setAdminMember(member);
         showToast(t.toastEmailVerified);
         return true;
       }
@@ -166,7 +222,7 @@ export default function App() {
         setDbConcerts(list);
         setConcertsLoaded(true);
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'concerts'),
+      (err) => logFirestoreError(err, OperationType.LIST, 'concerts'),
     );
 
     const unsubPromos = onSnapshot(
@@ -175,7 +231,7 @@ export default function App() {
         setDbPromos(snap.docs.map((d) => d.data() as Promo));
         setPromosLoaded(true);
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'promos'),
+      (err) => logFirestoreError(err, OperationType.LIST, 'promos'),
     );
 
     const unsubPaymentConfig = onSnapshot(
@@ -265,7 +321,7 @@ export default function App() {
           }
         }
       },
-      (err) => handleFirestoreError(err, OperationType.GET, `users/${uid}`),
+      (err) => logFirestoreError(err, OperationType.GET, `users/${uid}`),
     );
 
     const unsubBookings = onSnapshot(
@@ -273,7 +329,7 @@ export default function App() {
       (snap) => {
         setUserBookings(sortByCreatedAtDesc(snap.docs.map((d) => d.data() as Booking)));
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'bookings'),
+      (err) => logFirestoreError(err, OperationType.LIST, 'bookings'),
     );
 
     return () => {
@@ -302,7 +358,7 @@ export default function App() {
     const unsubBookings = onSnapshot(
       collection(db, 'bookings'),
       (snap) => setAdminBookings(sortByCreatedAtDesc(snap.docs.map((d) => d.data() as Booking))),
-      (err) => handleFirestoreError(err, OperationType.LIST, 'bookings'),
+      (err) => logFirestoreError(err, OperationType.LIST, 'bookings'),
     );
 
     let unsubWaitlist: (() => void) | null = null;
@@ -313,12 +369,12 @@ export default function App() {
       unsubWaitlist = onSnapshot(
         collection(db, 'waitlist'),
         (snap) => setAdminWaitlist(sortByCreatedAtDesc(snap.docs.map((d) => d.data() as WaitlistEntry))),
-        (err) => handleFirestoreError(err, OperationType.LIST, 'waitlist'),
+        (err) => logFirestoreError(err, OperationType.LIST, 'waitlist'),
       );
       unsubAdmins = onSnapshot(
         collection(db, 'admins'),
         (snap) => setAdminMembers(snap.docs.map((d) => d.data() as AdminMember)),
-        (err) => handleFirestoreError(err, OperationType.LIST, 'admins'),
+        (err) => logFirestoreError(err, OperationType.LIST, 'admins'),
       );
       unsubSessions = onSnapshot(
         collection(db, 'adminSessions'),
@@ -333,7 +389,7 @@ export default function App() {
             }
           }
         },
-        (err) => handleFirestoreError(err, OperationType.LIST, 'adminSessions'),
+        (err) => logFirestoreError(err, OperationType.LIST, 'adminSessions'),
       );
     } else {
       setAdminWaitlist([]);
@@ -350,7 +406,7 @@ export default function App() {
     ).catch(() => {});
 
     const heartbeatId = window.setInterval(() => {
-      void touchAdminSession(sid, adminDisplayNameRef.current, adminMember.role);
+      void touchAdminSession(sid, adminDisplayNameRef.current);
     }, 2 * 60 * 1000);
 
     const handlePageHide = () => {

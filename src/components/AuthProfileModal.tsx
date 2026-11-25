@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   deleteUser,
@@ -142,6 +142,8 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
   const [bio, setBio] = useState('');
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileStatus, setProfileStatus] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const profileHydratedKeyRef = useRef<string | null>(null);
+  const profileDirtyRef = useRef(false);
 
   const isVerifiedAccount = isVerifiedFanAccount(user);
   const isUnverifiedAccount = isPendingEmailVerification(user);
@@ -161,6 +163,8 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
       setAuthInfo('');
       setVerifyFeedback(null);
       setProfileStatus(null);
+      profileHydratedKeyRef.current = null;
+      profileDirtyRef.current = false;
       return;
     }
     const onKey = (e: KeyboardEvent) => {
@@ -171,16 +175,21 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
   }, [isOpen, onClose]);
 
   useEffect(() => {
-    if (isVerifiedAccount && user && isOpen) {
-      setDisplayName(profile?.displayName || user.displayName || '');
-      setMobile(profile?.mobile || '');
-      setCity(profile?.city || 'Qena');
-      setFavoriteGenre(profile?.favoriteGenre || 'Indie Pop / Rap');
-      setBio(profile?.bio || '');
-      setProfileStatus(null);
-      setAuthError('');
-      setAuthInfo('');
+    if (!isVerifiedAccount || !user || !isOpen) return;
+    const hydrationKey = `${user.uid}:${profile ? 'loaded' : 'initial'}`;
+    if (profileHydratedKeyRef.current === hydrationKey) return;
+    // Never overwrite in-progress user edits or wipe the save-success banner on live snapshots
+    if (profileDirtyRef.current && profileHydratedKeyRef.current?.startsWith(`${user.uid}:`)) {
+      return;
     }
+    profileHydratedKeyRef.current = hydrationKey;
+    setDisplayName(profile?.displayName || user.displayName || '');
+    setMobile(profile?.mobile || '');
+    setCity(profile?.city || 'Qena');
+    setFavoriteGenre(profile?.favoriteGenre || 'Indie Pop / Rap');
+    setBio(profile?.bio || '');
+    setAuthError('');
+    setAuthInfo('');
   }, [isVerifiedAccount, user, profile, isOpen]);
 
   if (!isOpen) return null;
@@ -451,6 +460,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
         },
       );
       onUserMutated();
+      profileDirtyRef.current = false;
       onNotify(t.profileSavedToast);
       setProfileStatus({ type: 'success', text: t.profileUpdatedStatus });
     } catch (err) {
@@ -876,7 +886,10 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     minLength={4}
                     maxLength={60}
                     value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
+                    onChange={(e) => {
+                      profileDirtyRef.current = true;
+                      setDisplayName(e.target.value);
+                    }}
                     className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                   />
                 </div>
@@ -892,7 +905,10 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       dir="ltr"
                       maxLength={20}
                       value={mobile}
-                      onChange={(e) => setMobile(e.target.value)}
+                      onChange={(e) => {
+                        profileDirtyRef.current = true;
+                        setMobile(e.target.value);
+                      }}
                       className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white font-mono-num focus:outline-none focus:border-white/50"
                     />
                   </div>
@@ -905,7 +921,10 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                       type="text"
                       maxLength={60}
                       value={city}
-                      onChange={(e) => setCity(e.target.value)}
+                      onChange={(e) => {
+                        profileDirtyRef.current = true;
+                        setCity(e.target.value);
+                      }}
                       className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                     />
                   </div>
@@ -918,7 +937,10 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                   <select
                     id="prof-genre"
                     value={favoriteGenre}
-                    onChange={(e) => setFavoriteGenre(e.target.value)}
+                    onChange={(e) => {
+                      profileDirtyRef.current = true;
+                      setFavoriteGenre(e.target.value);
+                    }}
                     className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50"
                   >
                     {GENRE_OPTIONS.map((g) => (
@@ -938,7 +960,10 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
                     rows={2}
                     maxLength={300}
                     value={bio}
-                    onChange={(e) => setBio(e.target.value)}
+                    onChange={(e) => {
+                      profileDirtyRef.current = true;
+                      setBio(e.target.value);
+                    }}
                     className="w-full px-3.5 py-2 rounded-lg bg-[#08090C] border border-white/12 text-sm text-white focus:outline-none focus:border-white/50 resize-none"
                   />
                 </div>

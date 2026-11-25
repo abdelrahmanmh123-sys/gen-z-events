@@ -384,7 +384,8 @@ export function compressPosterImage(file: File): Promise<string> {
           const { width, height } = fitPosterDimensions(img.width, img.height, attempt.maxWidth);
           canvas.width = width;
           canvas.height = height;
-          ctx.clearRect(0, 0, width, height);
+          ctx.fillStyle = '#08090C';
+          ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
           const dataUrl = canvas.toDataURL('image/jpeg', attempt.quality);
           if (dataUrl.length <= MAX_POSTER_DATA_URL_LENGTH) {

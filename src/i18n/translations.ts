@@ -324,6 +324,12 @@ const EN_TO_AR_MESSAGES: Record<string, string> = {
   'Password must be at least 8 characters long and include both letters and numbers.':
     'يجب أن تكون كلمة المرور ٨ أحرف على الأقل وتشمل حروفاً وأرقاماً.',
   'Sign-in popup was closed before completing.': 'تم إغلاق نافذة تسجيل الدخول قبل إتمام العملية.',
+  'Your browser blocked the sign-in popup. Please allow popups for this site or sign in with Email & Password.':
+    'قام المتصفح بحظر نافذة تسجيل الدخول المنبثقة. اسمح بالنوافذ المنبثقة لهذا الموقع أو سجّل الدخول بالبريد وكلمة المرور.',
+  'Network error while connecting to authentication service. Check your internet connection and try again.':
+    'خطأ في الشبكة أثناء الاتصال بخدمة تسجيل الدخول. تأكد من اتصالك بالإنترنت وحاول مرة أخرى.',
+  'This account has been disabled. Please contact Gen Z Events support.':
+    'تم تعطيل هذا الحساب. يرجى التواصل مع دعم Gen Z Events.',
   'Too many attempts. Please wait a moment and try again.':
     'محاولات كثيرة متتالية. يرجى الانتظار قليلاً ثم المحاولة مرة أخرى.',
   'Daily Firestore free-tier quota exceeded. Quota resets tomorrow.':
@@ -332,16 +338,56 @@ const EN_TO_AR_MESSAGES: Record<string, string> = {
     'ليست لديك صلاحية تنفيذ هذه العملية. تأكد من تسجيل الدخول وتفعيل بريدك الإلكتروني.',
 };
 
+const VALID_TIER_IDS: readonly TierId[] = ['Silver', 'Gold', 'VIP', 'Lounge'];
+
+function formatLocalizedTierList(tiers: readonly TierId[], lang: Language): string {
+  const names = tiers.map((tierId) => getTierCopy(tierId, lang).name);
+  if (names.length <= 1) return names[0] ?? '';
+  if (lang === 'ar') {
+    if (names.length === 2) return `${names[0]} و ${names[1]}`;
+    return `${names.slice(0, -1).join('، ')} و ${names[names.length - 1]}`;
+  }
+  if (names.length === 2) return `${names[0]} & ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
+}
+
+export function formatPromoTiersSummary(tiers: readonly TierId[], lang: Language): string {
+  const unique = VALID_TIER_IDS.filter((tierId) => tiers.includes(tierId));
+  if (unique.length === 0 || unique.length === VALID_TIER_IDS.length) {
+    return translations[lang].allTiersWord;
+  }
+  if (unique.length === 1) {
+    return `${getTierCopy(unique[0], lang).name} ${translations[lang].promoOnlySuffix}`;
+  }
+  return formatLocalizedTierList(unique, lang);
+}
+
 export function localizeKnownMessage(msg: string, lang: Language): string {
-  if (lang === 'en' || !msg) return msg;
+  if (!msg) return msg;
+  const appliesOnly = /^([A-Z0-9_\-]+) applies only to (.+) passes\.$/.exec(msg);
+  if (appliesOnly) {
+    const rawParts = appliesOnly[2]
+      .split(/\s*(?:,|&)\s*/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const matchedTiers = rawParts.filter((part): part is TierId =>
+      (VALID_TIER_IDS as readonly string[]).includes(part),
+    );
+    const localizedList =
+      matchedTiers.length === rawParts.length && matchedTiers.length > 0
+        ? formatLocalizedTierList(matchedTiers, lang)
+        : appliesOnly[2];
+    if (lang === 'en') {
+      return `${appliesOnly[1]} applies only to ${localizedList} passes.`;
+    }
+    const tierWord = matchedTiers.length === 1 ? 'فئة' : 'فئات';
+    return `الكود ${appliesOnly[1]} ينطبق فقط على ${tierWord} ${localizedList}.`;
+  }
+  if (lang === 'en') return msg;
   if (EN_TO_AR_MESSAGES[msg]) return EN_TO_AR_MESSAGES[msg];
   if (msg.startsWith('Quantity must be between 1 and ')) {
     const max = msg.replace('Quantity must be between 1 and ', '').replace('.', '');
     return `يجب أن يكون عدد التذاكر بين ١ و ${max}.`;
-  }
-  const appliesOnly = /^([A-Z0-9_\-]+) applies only to (.+) passes\.$/.exec(msg);
-  if (appliesOnly) {
-    return `الكود ${appliesOnly[1]} ينطبق فقط على فئات ${appliesOnly[2]}.`;
   }
   const promoApplied = /^(.+) applied \(-(.+) EGP\)$/.exec(msg);
   if (promoApplied) {
@@ -817,7 +863,11 @@ export const translations = {
     promoCodeLabel: 'Promo Code',
     promoScopeLabel: 'Pass Tier Scope',
     allPassTiers: 'All Pass Tiers',
-    vipLoungeOnly: 'VIP & Lounge Only',
+    vipLoungeOnly: 'Fan Pit (VIP) & Lounge',
+    promoScopeHint: 'Pick All Tiers, any individual ticket tier, or combine multiple tiers.',
+    promoAppliesToLabel: 'Applies to',
+    promoOnlySuffix: 'Only',
+    editingPromoNotice: 'Editing existing code',
     discountTypeLabel: 'Discount Type',
     percentOffOpt: '% Percentage Off',
     flatEgpOffOpt: 'Flat EGP Off',
@@ -1310,7 +1360,11 @@ export const translations = {
     promoCodeLabel: 'كود الخصم',
     promoScopeLabel: 'الفئات المشمولة',
     allPassTiers: 'جميع فئات التذاكر',
-    vipLoungeOnly: 'VIP ولاونج فقط',
+    vipLoungeOnly: 'فان بيت (VIP) ولاونج',
+    promoScopeHint: 'اختر جميع الفئات، أو أي فئة تذكرة منفردة، أو اجمع أكثر من فئة معاً.',
+    promoAppliesToLabel: 'ينطبق على',
+    promoOnlySuffix: 'فقط',
+    editingPromoNotice: 'تعديل كود حالي',
     discountTypeLabel: 'نوع الخصم',
     percentOffOpt: 'نسبة مئوية (%)',
     flatEgpOffOpt: 'مبلغ ثابت (ج.م)',

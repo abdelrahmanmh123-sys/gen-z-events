@@ -29,6 +29,7 @@ import {
   formatCheckInProgress,
   getBookingCheckedInCount,
   isBookingFullyCheckedIn,
+  toAsciiDigits,
 } from '../../utils/bookingLogic';
 import {
   buildAlreadyUsedVerdict,
@@ -88,17 +89,15 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
-  const cameraTimerRef = useRef<number | null>(null);
   const cooldownTimerRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
+  const cameraRequestIdRef = useRef(0);
   const verifyingRef = useRef(false);
   const lastScannedRef = useRef<string>('');
   const verifyCodeRef = useRef<(code: string, method: string) => Promise<void>>(async () => {});
 
   const stopCamera = () => {
-    if (cameraTimerRef.current !== null) {
-      window.clearTimeout(cameraTimerRef.current);
-      cameraTimerRef.current = null;
-    }
+    cameraRequestIdRef.current += 1;
     if (cooldownTimerRef.current !== null) {
       window.clearTimeout(cooldownTimerRef.current);
       cooldownTimerRef.current = null;
@@ -113,11 +112,17 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-    setCameraActive(false);
+    if (mountedRef.current) {
+      setCameraActive(false);
+    }
   };
 
   useEffect(() => {
-    return () => stopCamera();
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      stopCamera();
+    };
   }, []);
 
   const resetScanForNext = () => {
@@ -233,6 +238,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     }
 
     stopCamera();
+    const requestId = ++cameraRequestIdRef.current;
     const fallbacks = getCameraConstraintFallbacks();
     let stream: MediaStream | null = null;
     let lastError: unknown = null;
@@ -256,6 +262,12 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
           break;
         }
       }
+    }
+
+    // If staff left the tab or stopped the camera while permission prompt was open, release tracks immediately
+    if (!mountedRef.current || cameraRequestIdRef.current !== requestId) {
+      stream?.getTracks().forEach((track) => track.stop());
+      return;
     }
 
     if (!stream) {
@@ -407,7 +419,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   };
 
   const filteredRoster = useMemo(() => {
-    const q = rosterSearch.trim().toLowerCase();
+    const q = toAsciiDigits(rosterSearch).trim().toLowerCase();
     return bookings.filter((b) => {
       if (rosterFilter === 'unpaid' && b.paymentStatus !== 'Pending') return false;
       if (rosterFilter === 'pending' && (b.paymentStatus !== 'Paid' || isBookingFullyCheckedIn(b))) {
@@ -416,7 +428,9 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
       if (rosterFilter === 'checked' && getBookingCheckedInCount(b) === 0) return false;
       if (rosterFilter === 'offline' && b.paymentMethod !== 'Offline') return false;
       if (q) {
-        const hay = `${b.bookingCode} ${b.customerName} ${b.customerMobile} ${b.concertTitle} ${b.transferRef}`.toLowerCase();
+        const hay = toAsciiDigits(
+          `${b.bookingCode} ${b.customerName} ${b.customerMobile} ${b.concertTitle} ${b.transferRef}`,
+        ).toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -424,11 +438,13 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   }, [bookings, rosterSearch, rosterFilter]);
 
   const handleConfirmPay = async (b: Booking) => {
-    if (!canConfirmPayments) return;
+    if (!canConfirmPayments || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
       await adminConfirmPayment(b, adminName, 'Desk Confirm');
       playGateTone('success', soundEnabled);
+      const total = Math.max(1, Math.floor(b.quantity || 1));
+      const scanned = getBookingCheckedInCount(b);
       setScanResult((prev) =>
         prev?.booking?.bookingCode === b.bookingCode
           ? {
@@ -442,6 +458,9 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
                 : 'Payment has been confirmed and this ticket is now valid for gate entry.',
               scannedCode: b.bookingCode,
               booking: { ...b, paymentStatus: 'Paid' },
+              admittedCount: scanned,
+              totalQuantity: total,
+              remainingEntries: Math.max(0, total - scanned),
             }
           : prev,
       );
@@ -458,7 +477,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   };
 
   const handleUndoPay = async (b: Booking) => {
-    if (!canUndoPayments) return;
+    if (!canUndoPayments || busyCode === b.bookingCode) return;
     const hadCheckIns = getBookingCheckedInCount(b) > 0;
     setBusyCode(b.bookingCode);
     try {
@@ -495,7 +514,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   };
 
   const handleQuickApprove = async (b: Booking) => {
-    if (!canConfirmPayments) return;
+    if (!canConfirmPayments || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
       const scanRes = await adminConfirmAndCheckIn(b, adminName, 'Gate Pay + Entry');
@@ -522,7 +541,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   };
 
   const handleRosterAdvanceOrUndo = async (b: Booking, direction: 'admit' | 'undo') => {
-    if (b.paymentStatus !== 'Paid') return;
+    if (b.paymentStatus !== 'Paid' || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
       if (direction === 'admit') {
@@ -550,8 +569,8 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
         setScanResult((prev) =>
           prev?.booking?.bookingCode === b.bookingCode
             ? {
-                status: 'invalid_unpaid',
-                isValid: false,
+                status: 'valid_ready',
+                isValid: true,
                 tone: 'warn',
                 verdictBadge: isAr
                   ? `تم التراجع عن الدخول${counterSuffix}`
@@ -604,7 +623,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   };
 
   const handleDelete = async (b: Booking) => {
-    if (!canDeleteBookings) return;
+    if (!canDeleteBookings || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
       await adminDeleteBooking(b);

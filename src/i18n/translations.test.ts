@@ -5,6 +5,7 @@ import {
   buildFooterSubtitle,
   buildPaymentMethodCopy,
   formatCurrencyEgp,
+  formatPromoTiersSummary,
   getAdminRoleLabel,
   getDirection,
   getGenreLabel,
@@ -127,6 +128,22 @@ test('language resolution, directionality, currency, and label helpers work clea
     localizeKnownMessage('Quantity must be between 1 and 8.', 'ar'),
     'يجب أن يكون عدد التذاكر بين ١ و 8.',
   );
+  assert.ok(
+    localizeKnownMessage(
+      'Your browser blocked the sign-in popup. Please allow popups for this site or sign in with Email & Password.',
+      'ar',
+    ).includes('النافذة المنبثقة') ||
+      localizeKnownMessage(
+        'Your browser blocked the sign-in popup. Please allow popups for this site or sign in with Email & Password.',
+        'ar',
+      ).includes('نافذة تسجيل الدخول'),
+  );
+  assert.ok(
+    localizeKnownMessage(
+      'Network error while connecting to authentication service. Check your internet connection and try again.',
+      'ar',
+    ).includes('خطأ في الشبكة'),
+  );
 });
 
 test('Arabic-Indic and Persian digits normalize cleanly in mobile & numeric parsers', () => {
@@ -172,4 +189,30 @@ test('buildPaymentMethodCopy and buildFooterSubtitle interpolate live InstaPay &
   // Falls back gracefully to default PAYMENT_PHONE_NUMBER when blank
   const fallback = buildPaymentMethodCopy('InstaPay', 'en', { instapayNumber: '', walletNumber: '' });
   assert.equal(fallback.destination, PAYMENT_PHONE_NUMBER);
+});
+
+test('formatPromoTiersSummary and localizeKnownMessage handle individual and multi-tier promo scopes in EN and AR', () => {
+  assert.equal(formatPromoTiersSummary([], 'en'), 'All Tiers');
+  assert.equal(formatPromoTiersSummary([], 'ar'), 'كل الفئات');
+  assert.equal(formatPromoTiersSummary(['Silver', 'Gold', 'VIP', 'Lounge'], 'en'), 'All Tiers');
+
+  assert.equal(formatPromoTiersSummary(['Silver'], 'en'), 'Silver Only');
+  assert.equal(formatPromoTiersSummary(['Silver'], 'ar'), 'سيلفر (Silver) فقط');
+  assert.equal(formatPromoTiersSummary(['VIP'], 'en'), 'Fan Pit Only');
+  assert.equal(formatPromoTiersSummary(['VIP'], 'ar'), 'فان بيت (Fan Pit) فقط');
+  assert.equal(formatPromoTiersSummary(['Gold', 'Lounge'], 'en'), 'Gold & Lounge');
+  assert.equal(formatPromoTiersSummary(['Silver', 'Gold', 'VIP'], 'en'), 'Silver, Gold & Fan Pit');
+
+  assert.equal(
+    localizeKnownMessage('FANPIT50 applies only to VIP passes.', 'en'),
+    'FANPIT50 applies only to Fan Pit passes.',
+  );
+  assert.equal(
+    localizeKnownMessage('FANPIT50 applies only to VIP passes.', 'ar'),
+    'الكود FANPIT50 ينطبق فقط على فئة فان بيت (Fan Pit).',
+  );
+  assert.equal(
+    localizeKnownMessage('TRIO20 applies only to Silver, Gold & VIP passes.', 'ar'),
+    'الكود TRIO20 ينطبق فقط على فئات سيلفر (Silver)، جولد (Gold) و فان بيت (Fan Pit).',
+  );
 });

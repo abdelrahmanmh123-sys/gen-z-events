@@ -11,6 +11,7 @@ import {
   getDefaultUpcomingIsoDate,
   isSafeImageUrl,
   MAX_POSTER_DATA_URL_LENGTH,
+  normalizeScheduleDateTime,
   parseBoundedIntInput,
   sanitizeId,
   suggestTierPrices,
@@ -101,6 +102,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     const cleanTitle = title.trim();
     if (
       cleanTitle.length < 2 ||
@@ -116,7 +118,8 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
       );
       return;
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate) || !/^\d{2}:\d{2}$/.test(isoTime)) {
+    const scheduleCheck = normalizeScheduleDateTime(isoDate, isoTime);
+    if (!scheduleCheck.valid) {
       onNotify(
         isAr
           ? 'يرجى اختيار تاريخ ووقت بداية صحيحين للحفل.'
@@ -124,6 +127,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
       );
       return;
     }
+    const { isoDate: cleanIsoDate, isoTime: cleanIsoTime } = scheduleCheck;
     const trimmedPoster = posterUrl.trim();
     if (trimmedPoster.length > MAX_POSTER_DATA_URL_LENGTH) {
       onNotify(
@@ -142,12 +146,12 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
       return;
     }
 
-    const seatsParsed = parseBoundedIntInput(totalSeats, 10, 50000);
+    const seatsParsed = parseBoundedIntInput(totalSeats, 1, 50000);
     if (!seatsParsed.valid) {
       onNotify(
         isAr
-          ? 'يجب أن تكون السعة الإجمالية عدداً صحيحاً بين 10 و 50,000.'
-          : 'Total capacity must be a whole number between 10 and 50,000.',
+          ? 'يجب أن تكون السعة الإجمالية عدداً صحيحاً بين 1 و 50,000.'
+          : 'Total capacity must be a whole number between 1 and 50,000.',
       );
       return;
     }
@@ -178,7 +182,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
       resolvedTierColors = colorCheck.normalized;
     }
 
-    const formatted = formatDateTimeDisplay(isoDate, isoTime);
+    const formatted = formatDateTimeDisplay(cleanIsoDate, cleanIsoTime);
     const id = `${sanitizeId(cleanTitle, 'qena')}-${Date.now().toString(36).slice(-4)}`;
 
     setBusy(true);
@@ -189,8 +193,8 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
           title: cleanTitle.slice(0, 120),
           artist: artist.trim().slice(0, 120),
           venue: venue.trim().slice(0, 140),
-          isoDate,
-          isoTime,
+          isoDate: cleanIsoDate,
+          isoTime: cleanIsoTime,
           date: formatted.date,
           time: formatted.time,
           doors: formatted.doors,
@@ -337,7 +341,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
               id="sch-seats"
               type="number"
               dir="ltr"
-              min={10}
+              min={1}
               max={50000}
               required
               value={totalSeats}
@@ -411,11 +415,13 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
           </label>
           {posterUrl.startsWith('data:image/') ? (
             <div className="flex items-center gap-3 p-2.5 rounded-lg bg-[#08090C] border border-white/12">
-              <img
-                src={posterUrl}
-                alt={isAr ? 'معاينة بوستر الحفل' : 'Uploaded concert poster preview'}
-                className="w-16 h-10 object-cover rounded border border-white/10"
-              />
+              {isSafeImageUrl(posterUrl) && (
+                <img
+                  src={posterUrl}
+                  alt={isAr ? 'معاينة بوستر الحفل' : 'Uploaded concert poster preview'}
+                  className="w-16 h-10 object-cover rounded border border-white/10"
+                />
+              )}
               <span className="text-xs text-emerald-400 flex-1">{t.compressedPosterReady}</span>
               <button
                 type="button"

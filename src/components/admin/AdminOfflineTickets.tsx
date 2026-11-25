@@ -36,6 +36,7 @@ import {
   OFFLINE_USER_ID,
   parseBoundedIntInput,
   parseOfflineTicketRows,
+  toAsciiDigits,
   type ParsedOfflineBatchResult,
 } from '../../utils/bookingLogic';
 import {
@@ -157,11 +158,13 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
   }, [offlineBookings]);
 
   const filteredOffline = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = toAsciiDigits(searchQuery).trim().toLowerCase();
     return offlineBookings.filter((b) => {
       if (concertFilter !== 'all' && b.concertId !== concertFilter) return false;
       if (q) {
-        const hay = `${b.bookingCode} ${b.customerName} ${b.customerMobile} ${b.customerEmail} ${b.concertTitle} ${b.transferRef} ${b.tier}`.toLowerCase();
+        const hay = toAsciiDigits(
+          `${b.bookingCode} ${b.customerName} ${b.customerMobile} ${b.customerEmail} ${b.concertTitle} ${b.transferRef} ${b.tier}`,
+        ).toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -223,12 +226,12 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
             : ` (${res.skippedDuplicateCount} duplicate skipped)`
           : '';
       const revPart = canViewRevenueAnalytics
-        ? ` · ${formatCurrencyEgp(parsedImport.totalRevenueEgp, lang)}`
+        ? ` · ${formatCurrencyEgp(res.importedRevenueEgp, lang)}`
         : '';
       onNotify(
         isAr
-          ? `تم استيراد ${res.importedCount} عملية أوفلاين (${parsedImport.totalTickets.toLocaleString()} تذكرة${revPart})${dupSuffix}.`
-          : `Imported ${res.importedCount} offline sale(s) (${parsedImport.totalTickets.toLocaleString()} tickets${revPart})${dupSuffix}.`,
+          ? `تم استيراد ${res.importedCount} عملية أوفلاين (${res.importedTickets.toLocaleString()} تذكرة${revPart})${dupSuffix}.`
+          : `Imported ${res.importedCount} offline sale(s) (${res.importedTickets.toLocaleString()} tickets${revPart})${dupSuffix}.`,
       );
     } catch (err) {
       onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
@@ -239,6 +242,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (manualBusy) return;
     if (!activeConcert) {
       onNotify(isAr ? 'يرجى اختيار الحفل أولاً.' : 'Please select a concert first.');
       return;

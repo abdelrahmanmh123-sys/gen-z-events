@@ -56,6 +56,38 @@ export function getTierUnitPrice(concert: Pick<Concert, 'priceEgp' | 'tierPrices
   return fallback[tier];
 }
 
+export const ALL_PROMO_TIERS: readonly TierId[] = ['Silver', 'Gold', 'VIP', 'Lounge'];
+
+export function normalizePromoTiers(tiers: readonly TierId[]): TierId[] {
+  const validSet = new Set<TierId>();
+  for (const tier of tiers) {
+    if (ALL_PROMO_TIERS.includes(tier)) {
+      validSet.add(tier);
+    }
+  }
+  if (validSet.size === 0 || validSet.size === ALL_PROMO_TIERS.length) {
+    return [];
+  }
+  return ALL_PROMO_TIERS.filter((tier) => validSet.has(tier));
+}
+
+export function togglePromoTier(currentTiers: readonly TierId[], tier: TierId): TierId[] {
+  const normalized = normalizePromoTiers(currentTiers);
+  if (normalized.length === 0) {
+    return ALL_PROMO_TIERS.includes(tier) ? [tier] : [];
+  }
+  if (normalized.includes(tier)) {
+    return normalizePromoTiers(normalized.filter((item) => item !== tier));
+  }
+  return normalizePromoTiers([...normalized, tier]);
+}
+
+function formatTierIdListEn(tiers: readonly TierId[]): string {
+  if (tiers.length <= 1) return tiers[0] ?? '';
+  if (tiers.length === 2) return `${tiers[0]} & ${tiers[1]}`;
+  return `${tiers.slice(0, -1).join(', ')} & ${tiers[tiers.length - 1]}`;
+}
+
 export interface PromoEvaluation {
   valid: boolean;
   code: string;
@@ -84,12 +116,13 @@ export function evaluatePromo(
       promo: null,
     };
   }
-  if (Array.isArray(found.tiers) && found.tiers.length > 0 && !found.tiers.includes(tier)) {
+  const scopedTiers = Array.isArray(found.tiers) ? normalizePromoTiers(found.tiers) : [];
+  if (scopedTiers.length > 0 && !scopedTiers.includes(tier)) {
     return {
       valid: false,
       code,
       discountEgp: 0,
-      message: `${found.code} applies only to ${found.tiers.join(' & ')} passes.`,
+      message: `${found.code} applies only to ${formatTierIdListEn(scopedTiers)} passes.`,
       promo: null,
     };
   }
@@ -1412,7 +1445,7 @@ export function parseOfflineTicketRows(
       statusLower === 'غير مدفوع'
         ? 'Pending'
         : 'Paid';
-    const checkedIn = parseTruthyFlag(rawCheckedIn);
+    const checkedIn = paymentStatus === 'Paid' && parseTruthyFlag(rawCheckedIn);
     const transferRef = (rawOutlet.replace(/\s+/g, ' ').trim() || 'Offline Box Office')
       .padEnd(3, ' ')
       .trim()
@@ -1441,8 +1474,8 @@ export function parseOfflineTicketRows(
       checkedIn,
       checkedInCount: checkedIn ? qtyNum : 0,
       checkedInAt: checkedIn ? 'Excel Import' : '',
-      approvedBy: adminName.trim().slice(0, 100) || 'Admin',
-      approvalMethod: 'Excel Import',
+      approvedBy: paymentStatus === 'Paid' ? adminName.trim().slice(0, 100) || 'Admin' : '',
+      approvalMethod: paymentStatus === 'Paid' ? 'Excel Import' : '',
       customerName: cleanName,
       customerMobile: cleanMobile,
       customerEmail: cleanEmail,
@@ -1533,6 +1566,23 @@ function isValidClockIsoTime(isoTime: string): boolean {
   return hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59;
 }
 
+/**
+ * Normalizes HH:MM:SS (emitted by some mobile time inputs) to HH:MM and validates
+ * that both the calendar date (no Feb 30) and 24-hour clock time are real.
+ */
+export function normalizeScheduleDateTime(
+  rawIsoDate: string,
+  rawIsoTime: string,
+): { valid: true; isoDate: string; isoTime: string } | { valid: false } {
+  const isoDate = rawIsoDate.trim();
+  const trimmedTime = rawIsoTime.trim();
+  const isoTime = /^\d{2}:\d{2}:\d{2}$/.test(trimmedTime) ? trimmedTime.slice(0, 5) : trimmedTime;
+  if (!isValidCalendarIsoDate(isoDate) || !isValidClockIsoTime(isoTime)) {
+    return { valid: false };
+  }
+  return { valid: true, isoDate, isoTime };
+}
+
 export function validateAndBuildConcertEditPayload(
   original: Concert,
   draft: ConcertEditDraft,
@@ -1557,16 +1607,15 @@ export function validateAndBuildConcertEditPayload(
     };
   }
 
-  const cleanIsoDate = draft.isoDate.trim();
-  const rawIsoTime = draft.isoTime.trim();
-  const cleanIsoTime = /^\d{2}:\d{2}:\d{2}$/.test(rawIsoTime) ? rawIsoTime.slice(0, 5) : rawIsoTime;
-  if (!isValidCalendarIsoDate(cleanIsoDate) || !isValidClockIsoTime(cleanIsoTime)) {
+  const scheduleCheck = normalizeScheduleDateTime(draft.isoDate, draft.isoTime);
+  if (!scheduleCheck.valid) {
     return {
       valid: false,
       errorEn: 'Please pick a valid event date and start time.',
       errorAr: 'يرجى اختيار تاريخ ووقت بداية صحيحين للحفل.',
     };
   }
+  const { isoDate: cleanIsoDate, isoTime: cleanIsoTime } = scheduleCheck;
 
   const totalParsed = parseBoundedIntInput(draft.totalSeats, 1, 50000);
   if (!totalParsed.valid) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   Calendar,
@@ -85,6 +85,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const { lang, t } = useLanguage();
   const [selectedTier, setSelectedTier] = useState<TierId>('Silver');
   const [quantity, setQuantity] = useState(1);
+  const [qtyInput, setQtyInput] = useState('1');
   const [promoInput, setPromoInput] = useState('');
   const [appliedPromo, setAppliedPromo] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<OnlinePaymentMethodId>('InstaPay');
@@ -94,6 +95,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [customerEmail, setCustomerEmail] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   // Super Admin inline editor for InstaPay & Vodafone Cash numbers
   const [editingPaymentNumbers, setEditingPaymentNumbers] = useState(false);
@@ -108,6 +110,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (concertId) {
       setSelectedTier('Silver');
       setQuantity(1);
+      setQtyInput('1');
       setPromoInput('');
       setAppliedPromo('');
       setPaymentMethod('InstaPay');
@@ -150,6 +153,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   useEffect(() => {
     if (liveSeatsLeft > 0 && quantity > maxSelectable) {
       setQuantity(maxSelectable);
+      setQtyInput(String(maxSelectable));
     }
   }, [liveSeatsLeft, maxSelectable, quantity]);
 
@@ -214,6 +218,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleJoinWaitlist = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     setErrorMsg('');
     if (!user || !isVerifiedUser) {
       onRequireAuth();
@@ -233,6 +238,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       );
       return;
     }
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       await ensureFreshVerifiedToken(user);
@@ -251,23 +257,26 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     } catch (err) {
       setErrorMsg(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     setErrorMsg('');
     if (!user || !isVerifiedUser) {
       onRequireAuth();
       return;
     }
 
+    const normalizedTransferRef = toAsciiDigits(transferRef).trim();
     const validation = validateBookingInput({
       customerName,
       customerMobile,
       customerEmail,
-      transferRef,
+      transferRef: normalizedTransferRef,
       quantity,
       seatsLeft: concert.seatsLeft,
     });
@@ -281,6 +290,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       return;
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       await ensureFreshVerifiedToken(user);
@@ -300,7 +310,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         discountEgp: totals.discountEgp,
         totalEgp: totals.totalEgp,
         paymentMethod,
-        transferRef: transferRef.trim().slice(0, 80),
+        transferRef: normalizedTransferRef.slice(0, 80),
         paymentStatus: 'Pending',
         checkedIn: false,
         checkedInCount: 0,
@@ -316,6 +326,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     } catch (err) {
       setErrorMsg(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -520,7 +531,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <div className="flex items-center justify-between bg-[#08090C] border border-white/12 rounded-lg px-2 py-1.5">
                     <button
                       type="button"
-                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                      onClick={() => {
+                        const next = Math.max(1, quantity - 1);
+                        setQuantity(next);
+                        setQtyInput(String(next));
+                      }}
                       disabled={quantity <= 1}
                       aria-label={t.decreaseQtyAria}
                       className="w-8 h-8 rounded-md flex items-center justify-center text-slate-200 hover:bg-white/10 disabled:opacity-40"
@@ -533,20 +548,38 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       inputMode="numeric"
                       dir="ltr"
                       aria-label={t.step2Quantity}
-                      value={quantity}
+                      value={qtyInput}
                       onChange={(e) => {
-                        const digits = toAsciiDigits(e.target.value).replace(/\D/g, '');
+                        const digits = toAsciiDigits(e.target.value).replace(/\D/g, '').slice(0, 2);
+                        setQtyInput(digits);
                         if (!digits) return;
                         const parsed = Number.parseInt(digits, 10);
-                        if (Number.isFinite(parsed)) {
-                          setQuantity(Math.max(1, Math.min(maxSelectable, parsed)));
+                        if (Number.isFinite(parsed) && parsed >= 1) {
+                          const clamped = Math.min(maxSelectable, parsed);
+                          setQuantity(clamped);
+                          if (parsed > maxSelectable) {
+                            setQtyInput(String(clamped));
+                          }
                         }
+                      }}
+                      onBlur={() => {
+                        const parsed = Number.parseInt(qtyInput, 10);
+                        const clamped =
+                          Number.isFinite(parsed) && parsed >= 1
+                            ? Math.min(maxSelectable, parsed)
+                            : 1;
+                        setQuantity(clamped);
+                        setQtyInput(String(clamped));
                       }}
                       className="w-12 text-center bg-transparent font-mono-num text-base font-bold text-white focus:outline-none"
                     />
                     <button
                       type="button"
-                      onClick={() => setQuantity((q) => Math.min(maxSelectable, q + 1))}
+                      onClick={() => {
+                        const next = Math.min(maxSelectable, quantity + 1);
+                        setQuantity(next);
+                        setQtyInput(String(next));
+                      }}
                       disabled={quantity >= maxSelectable}
                       aria-label={t.increaseQtyAria}
                       className="w-8 h-8 rounded-md flex items-center justify-center text-slate-200 hover:bg-white/10 disabled:opacity-40"

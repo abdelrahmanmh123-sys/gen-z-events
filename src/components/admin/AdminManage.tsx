@@ -77,6 +77,7 @@ export const AdminManage: React.FC<AdminManageProps> = ({
   const [editError, setEditError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyWaitlistId, setBusyWaitlistId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!editingConcert) return;
@@ -254,9 +255,10 @@ export const AdminManage: React.FC<AdminManageProps> = ({
 
   const handleExportCsv = () => {
     const csv = buildAttendeesCsv(bookings);
+    // Prepend UTF-8 BOM so Microsoft Excel on Windows opens Arabic names cleanly without mojibake
     triggerFileDownload(
       `genz-events-attendees-${new Date().toISOString().slice(0, 10)}.csv`,
-      csv,
+      `\uFEFF${csv}`,
       'text/csv;charset=utf-8',
     );
     onNotify(
@@ -267,11 +269,15 @@ export const AdminManage: React.FC<AdminManageProps> = ({
   };
 
   const handleRemoveWaitlist = async (id: string) => {
+    if (busyWaitlistId === id) return;
+    setBusyWaitlistId(id);
     try {
       await deleteWaitlistEntry(id);
       onNotify(isAr ? 'تمت إزالة السجل من قائمة الانتظار.' : 'Waitlist entry removed.');
     } catch (err) {
       onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
+    } finally {
+      setBusyWaitlistId(null);
     }
   };
 
@@ -482,13 +488,14 @@ export const AdminManage: React.FC<AdminManageProps> = ({
                         </button>
                         <button
                           type="button"
+                          disabled={busyWaitlistId === w.id}
                           onClick={() => void handleRemoveWaitlist(w.id)}
                           aria-label={
                             isAr
                               ? `إزالة ${w.name} من قائمة الانتظار`
                               : `Remove ${w.name} from waitlist`
                           }
-                          className="p-1.5 rounded text-slate-400 hover:text-rose-400"
+                          className="p-1.5 rounded text-slate-400 hover:text-rose-400 disabled:opacity-50"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

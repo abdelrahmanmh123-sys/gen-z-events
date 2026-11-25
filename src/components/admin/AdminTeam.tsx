@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
+import { ShieldCheck, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { PRIMARY_ADMIN_EMAIL } from '../../data/defaults';
 import { adminAddMember, adminRemoveMember } from '../../services/firestoreService';
 import { formatFriendlyFirebaseError } from '../../firebase';
@@ -28,9 +28,12 @@ export const AdminTeam: React.FC<AdminTeamProps> = ({
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<AdminRole>('Gate Staff');
   const [busy, setBusy] = useState(false);
+  const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
   const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     const cleanName = name.trim().replace(/\s+/g, ' ');
     const emailCheck = validateEmailAddress(email, { allowDisposable: true });
     if (cleanName.length < 2 || cleanName.length > 100 || !emailCheck.valid) {
@@ -61,6 +64,7 @@ export const AdminTeam: React.FC<AdminTeamProps> = ({
   };
 
   const handleRemove = async (member: AdminMember) => {
+    if (busyMemberId === member.id) return;
     if (member.email.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
       onNotify(
         isAr
@@ -77,8 +81,10 @@ export const AdminTeam: React.FC<AdminTeamProps> = ({
       );
       return;
     }
+    setBusyMemberId(member.id);
     try {
       await adminRemoveMember(member.id);
+      setConfirmRemoveId(null);
       onNotify(
         isAr
           ? `تم إلغاء صلاحية الفريق لحساب ${member.email}.`
@@ -86,6 +92,8 @@ export const AdminTeam: React.FC<AdminTeamProps> = ({
       );
     } catch (err) {
       onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
+    } finally {
+      setBusyMemberId(null);
     }
   };
 
@@ -181,14 +189,36 @@ export const AdminTeam: React.FC<AdminTeamProps> = ({
                   <span className="font-mono-num text-[11px] text-slate-300">
                     {getAdminRoleLabel(member.role, lang)}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => void handleRemove(member)}
-                    aria-label={isAr ? `إزالة ${member.email}` : `Remove ${member.email}`}
-                    className="p-1 text-slate-400 hover:text-rose-400"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {confirmRemoveId === member.id ? (
+                    <span className="inline-flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={busyMemberId === member.id}
+                        onClick={() => void handleRemove(member)}
+                        className="px-2 py-1 rounded bg-rose-600 text-white text-[11px] font-semibold disabled:opacity-50"
+                      >
+                        {t.sureBtn}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmRemoveId(null)}
+                        aria-label={t.cancelDeleteAria}
+                        className="p-1 text-slate-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busyMemberId === member.id}
+                      onClick={() => setConfirmRemoveId(member.id)}
+                      aria-label={isAr ? `إزالة ${member.email}` : `Remove ${member.email}`}
+                      className="p-1 text-slate-400 hover:text-rose-400 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

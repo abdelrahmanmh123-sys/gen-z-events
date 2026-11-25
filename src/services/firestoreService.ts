@@ -408,9 +408,21 @@ export async function adminBulkImportOfflineBookings(
   concertId: string,
   bookings: Omit<Booking, 'createdAt' | 'updatedAt'>[],
   deductSeats: boolean,
-): Promise<{ importedCount: number; skippedDuplicateCount: number; deductedTickets: number }> {
+): Promise<{
+  importedCount: number;
+  skippedDuplicateCount: number;
+  deductedTickets: number;
+  importedTickets: number;
+  importedRevenueEgp: number;
+}> {
   if (bookings.length === 0) {
-    return { importedCount: 0, skippedDuplicateCount: 0, deductedTickets: 0 };
+    return {
+      importedCount: 0,
+      skippedDuplicateCount: 0,
+      deductedTickets: 0,
+      importedTickets: 0,
+      importedRevenueEgp: 0,
+    };
   }
   const EXISTENCE_CHECK_CHUNK = 25;
   const WRITE_CHUNK_SIZE = 400;
@@ -443,9 +455,16 @@ export async function adminBulkImportOfflineBookings(
     }
 
     if (freshBookings.length === 0) {
-      return { importedCount: 0, skippedDuplicateCount, deductedTickets: 0 };
+      return {
+        importedCount: 0,
+        skippedDuplicateCount,
+        deductedTickets: 0,
+        importedTickets: 0,
+        importedRevenueEgp: 0,
+      };
     }
 
+    let committedPaidQty = 0;
     for (let i = 0; i < freshBookings.length; i += WRITE_CHUNK_SIZE) {
       const chunk = freshBookings.slice(i, i + WRITE_CHUNK_SIZE);
       const batch = writeBatch(db);
@@ -457,20 +476,24 @@ export async function adminBulkImportOfflineBookings(
         });
       }
       await batch.commit();
+      committedPaidQty += chunk
+        .filter((b) => b.paymentStatus === 'Paid')
+        .reduce((sum, b) => sum + b.quantity, 0);
     }
 
-    const totalPaidQty = freshBookings
+    const importedTickets = freshBookings.reduce((sum, b) => sum + b.quantity, 0);
+    const importedRevenueEgp = freshBookings
       .filter((b) => b.paymentStatus === 'Paid')
-      .reduce((sum, b) => sum + b.quantity, 0);
+      .reduce((sum, b) => sum + b.totalEgp, 0);
 
     let deductedTickets = 0;
-    if (deductSeats && totalPaidQty > 0) {
+    if (deductSeats && committedPaidQty > 0) {
       const concertRef = doc(db, 'concerts', concertId);
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(concertRef);
         if (!snap.exists()) return;
         const freshConcert = snap.data() as Concert;
-        const nextSeats = Math.max(0, freshConcert.seatsLeft - totalPaidQty);
+        const nextSeats = Math.max(0, freshConcert.seatsLeft - committedPaidQty);
         deductedTickets = freshConcert.seatsLeft - nextSeats;
         tx.update(concertRef, {
           seatsLeft: nextSeats,
@@ -479,7 +502,13 @@ export async function adminBulkImportOfflineBookings(
       });
     }
 
-    return { importedCount: freshBookings.length, skippedDuplicateCount, deductedTickets };
+    return {
+      importedCount: freshBookings.length,
+      skippedDuplicateCount,
+      deductedTickets,
+      importedTickets,
+      importedRevenueEgp,
+    };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `bookings/offline-import/${concertId}`);
   }
@@ -643,7 +672,7 @@ export async function adminRemoveMember(id: string): Promise<void> {
 
 export async function checkIsEmailAdmin(email: string | null | undefined): Promise<AdminMember | null> {
   if (!email) return null;
-  const lower = email.toLowerCase();
+  const lower = email.trim().toLowerCase();
   if (lower === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
     return {
       id: emailToDocId(lower),
@@ -654,6 +683,7 @@ export async function checkIsEmailAdmin(email: string | null | undefined): Promi
     };
   }
   const id = emailToDocId(lower);
+  if (id.length < 2 || id.length > 128) return null;
   try {
     const snap = await getDoc(doc(db, 'admins', id));
     if (snap.exists()) {
@@ -691,12 +721,10 @@ export async function createAdminSession(
 export async function touchAdminSession(
   sessionId: string,
   name: string,
-  role: AdminRole,
 ): Promise<void> {
   try {
     await updateDoc(doc(db, 'adminSessions', sessionId), {
       name: name.trim().slice(0, 100) || 'Admin',
-      role,
       lastSeen: serverTimestamp(),
     });
   } catch {

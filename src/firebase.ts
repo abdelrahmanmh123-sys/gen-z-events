@@ -86,12 +86,12 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(
+function buildFirestoreErrorInfo(
   error: unknown,
   operationType: OperationType,
   path: string | null,
-): never {
-  const errInfo: FirestoreErrorInfo = {
+): FirestoreErrorInfo {
+  return {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
       userId: auth.currentUser?.uid,
@@ -108,6 +108,23 @@ export function handleFirestoreError(
     operationType,
     path,
   };
+}
+
+export function logFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null,
+): void {
+  const errInfo = buildFirestoreErrorInfo(error, operationType, path);
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+}
+
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null,
+): never {
+  const errInfo = buildFirestoreErrorInfo(error, operationType, path);
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
@@ -145,8 +162,17 @@ export function formatFriendlyFirebaseError(error: unknown): string {
   if (raw.includes('auth/invalid-email')) {
     return 'Please enter a valid email address.';
   }
-  if (raw.includes('auth/popup-closed-by-user')) {
+  if (raw.includes('auth/popup-closed-by-user') || raw.includes('auth/cancelled-popup-request')) {
     return 'Sign-in popup was closed before completing.';
+  }
+  if (raw.includes('auth/popup-blocked')) {
+    return 'Your browser blocked the sign-in popup. Please allow popups for this site or sign in with Email & Password.';
+  }
+  if (raw.includes('auth/network-request-failed')) {
+    return 'Network error while connecting to authentication service. Check your internet connection and try again.';
+  }
+  if (raw.includes('auth/user-disabled')) {
+    return 'This account has been disabled. Please contact Gen Z Events support.';
   }
   if (raw.includes('auth/too-many-requests')) {
     return 'Too many attempts. Please wait a moment and try again.';

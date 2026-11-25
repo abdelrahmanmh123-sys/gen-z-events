@@ -251,4 +251,19 @@ test('mapGoogleFormResponsesToBookings maps Fan Pit, Arabic digits, conditional 
   assert.equal(fanPitBooking.totalEgp, 800);
   assert.equal(fanPitBooking.transferRef, 'الكورنيش');
   assert.equal(isGenZTicketCodeFormat(fanPitBooking.bookingCode), true);
+
+  // Pending Google Form imports must NOT stamp approvedBy/approvalMethod
+  const pendingResult = mapGoogleFormResponsesToBookings({
+    responses: [responses[0]],
+    mapping,
+    concert: SAMPLE_CONCERT,
+    adminName: 'Lead Organizer',
+    existingCodes: [],
+    defaultPaymentStatus: 'Pending',
+    lang: 'en',
+  });
+  assert.equal(pendingResult.newBookings.length, 1);
+  assert.equal(pendingResult.newBookings[0].paymentStatus, 'Pending');
+  assert.equal(pendingResult.newBookings[0].approvedBy, '');
+  assert.equal(pendingResult.newBookings[0].approvalMethod, '');
 });
