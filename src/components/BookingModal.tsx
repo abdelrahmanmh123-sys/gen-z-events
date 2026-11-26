@@ -191,7 +191,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
     setSavingPaymentNumbers(true);
     try {
-      await adminSavePaymentConfig(check.normalized, adminName || user?.email || 'Super Admin');
+      const actorName = adminName || user?.email || 'Super Admin';
+      await adminSavePaymentConfig(check.normalized, actorName, {
+        name: actorName,
+        role: 'Super Admin',
+      });
       setEditingPaymentNumbers(false);
       onNotify(t.paymentNumbersUpdatedToast);
     } catch (err) {

@@ -21,11 +21,16 @@ import { compressPosterImage } from '../../utils/passExport';
 import { TierColorEditor } from './TierColorEditor';
 
 interface AdminScheduleProps {
+  adminName: string;
   onNotify: (msg: string) => void;
   onCreated: () => void;
 }
 
-export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreated }) => {
+export const AdminSchedule: React.FC<AdminScheduleProps> = ({
+  adminName,
+  onNotify,
+  onCreated,
+}) => {
   const { lang, t } = useLanguage();
   const isAr = lang === 'ar';
 
@@ -213,6 +218,7 @@ export const AdminSchedule: React.FC<AdminScheduleProps> = ({ onNotify, onCreate
           posterUrl: trimmedPoster,
         },
         false,
+        { name: adminName, role: 'Super Admin' },
       );
       setTitle('');
       setArtist('');

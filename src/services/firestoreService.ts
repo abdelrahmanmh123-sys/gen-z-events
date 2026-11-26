@@ -9,11 +9,13 @@ import {
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { auth, db, handleFirestoreError, logFirestoreError, OperationType } from '../firebase';
 import { PRIMARY_ADMIN_EMAIL } from '../data/defaults';
 import type {
   AdminMember,
   AdminRole,
+  AuditAction,
+  AuditActor,
   Booking,
   Concert,
   Promo,
@@ -27,6 +29,46 @@ import {
   getBookingCheckedInCount,
   PAYMENT_CONFIG_DOC_ID,
 } from '../utils/bookingLogic';
+import {
+  buildAuditLogRecord,
+  canRoleRecordAuditAction,
+  describeBookingForAudit,
+  type AuditLogInput,
+} from '../utils/auditLog';
+
+function resolveActor(actor?: AuditActor, fallbackName?: string, fallbackRole: AdminRole = 'Super Admin'): AuditActor {
+  if (actor) return actor;
+  return {
+    name: fallbackName?.trim() || auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'Staff',
+    role: fallbackRole,
+  };
+}
+
+/**
+ * Appends an immutable staff audit log document to /auditLogs/{id}.
+ * Non-fatal on write error so live gate/desk operations keep working smoothly
+ * even before updated Firestore rules finish propagating.
+ */
+async function recordAuditLog(input: AuditLogInput): Promise<void> {
+  const currentUser = auth.currentUser;
+  const email = (currentUser?.email || '').trim().toLowerCase();
+  if (!currentUser || !currentUser.uid || !email) return;
+  if (!canRoleRecordAuditAction(input.actor.role, input.action)) return;
+  const record = buildAuditLogRecord({
+    ...input,
+    actorUid: currentUser.uid,
+    actorEmail: email,
+  });
+  const path = `auditLogs/${record.id}`;
+  try {
+    await setDoc(doc(db, 'auditLogs', record.id), {
+      ...record,
+      createdAt: serverTimestamp(),
+    });
+  } catch (error) {
+    logFirestoreError(error, OperationType.CREATE, path);
+  }
+}
 
 export async function upsertUserProfile(
   uid: string,
@@ -100,10 +142,12 @@ export async function adminConfirmPayment(
   booking: Booking,
   approverName: string,
   method: string,
+  actor?: AuditActor,
 ): Promise<void> {
   const bookingRef = doc(db, 'bookings', booking.bookingCode);
   const concertRef = doc(db, 'concerts', booking.concertId);
   try {
+    let confirmedBooking: Booking | null = null;
     await runTransaction(db, async (tx) => {
       const freshBookingSnap = await tx.get(bookingRef);
       if (!freshBookingSnap.exists()) {
@@ -127,17 +171,35 @@ export async function adminConfirmPayment(
           updatedAt: serverTimestamp(),
         });
       }
+      confirmedBooking = freshBooking;
     });
+
+    if (confirmedBooking) {
+      const confirmed = confirmedBooking as Booking;
+      await recordAuditLog({
+        action: 'payment_confirmed',
+        actor: resolveActor(actor, approverName, 'Super Admin'),
+        targetType: 'booking',
+        targetId: confirmed.bookingCode,
+        targetLabel: confirmed.customerName,
+        details: describeBookingForAudit(confirmed, [method]),
+        amountEgp: confirmed.totalEgp,
+      });
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.bookingCode}`);
   }
 }
 
-export async function adminUndoPayment(booking: Booking): Promise<boolean> {
+export async function adminUndoPayment(
+  booking: Booking,
+  actor?: AuditActor,
+): Promise<boolean> {
   const bookingRef = doc(db, 'bookings', booking.bookingCode);
   const concertRef = doc(db, 'concerts', booking.concertId);
   try {
-    return await runTransaction(db, async (tx) => {
+    let revertedSnapshot: Booking | null = null;
+    const reverted = await runTransaction(db, async (tx) => {
       const freshBookingSnap = await tx.get(bookingRef);
       if (!freshBookingSnap.exists()) {
         throw new Error('Booking no longer exists.');
@@ -164,8 +226,27 @@ export async function adminUndoPayment(booking: Booking): Promise<boolean> {
           updatedAt: serverTimestamp(),
         });
       }
+      revertedSnapshot = freshBooking;
       return true;
     });
+
+    if (reverted && revertedSnapshot) {
+      const prev = revertedSnapshot as Booking;
+      const hadCheckIns = getBookingCheckedInCount(prev) > 0;
+      await recordAuditLog({
+        action: 'payment_undone',
+        actor: resolveActor(actor, undefined, 'Super Admin'),
+        targetType: 'booking',
+        targetId: prev.bookingCode,
+        targetLabel: prev.customerName,
+        details: describeBookingForAudit(prev, [
+          prev.approvedBy ? `Prev approver: ${prev.approvedBy}` : null,
+          hadCheckIns ? `Check-in reset (${getBookingCheckedInCount(prev)}/${prev.quantity})` : null,
+        ]),
+        amountEgp: prev.totalEgp,
+      });
+    }
+    return reverted;
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.bookingCode}`);
   }
@@ -182,12 +263,14 @@ export async function adminScanCheckIn(
   booking: Booking,
   approverName: string,
   method: string,
+  actor?: AuditActor,
 ): Promise<CheckInScanResult> {
   const path = `bookings/${booking.bookingCode}`;
   const bookingRef = doc(db, 'bookings', booking.bookingCode);
   const timeStamp = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   try {
     // Atomic transaction guarantees simultaneous entrance scanners increment 1/5 -> 2/5 -> ... -> 5/5 cleanly and never over-admit
+    let scannedBooking: Booking | null = null;
     const result = await runTransaction(db, async (tx) => {
       const snap = await tx.get(bookingRef);
       if (!snap.exists()) {
@@ -214,6 +297,7 @@ export async function adminScanCheckIn(
         approvalMethod: method.slice(0, 40),
         updatedAt: serverTimestamp(),
       });
+      scannedBooking = fresh;
       return {
         checkedInCount: nextCount,
         quantity: total,
@@ -221,6 +305,22 @@ export async function adminScanCheckIn(
         checkedInAt: timeStamp,
       };
     });
+
+    if (scannedBooking) {
+      const scanned = scannedBooking as Booking;
+      await recordAuditLog({
+        action: 'checkin',
+        actor: resolveActor(actor, approverName, 'Super Admin'),
+        targetType: 'booking',
+        targetId: scanned.bookingCode,
+        targetLabel: scanned.customerName,
+        details: describeBookingForAudit(scanned, [
+          method,
+          `Entries ${result.checkedInCount}/${result.quantity}`,
+        ]),
+        amountEgp: 0,
+      });
+    }
     return result;
   } catch (error) {
     if (
@@ -237,10 +337,12 @@ export async function adminDecrementCheckIn(
   booking: Booking,
   approverName: string,
   method: string,
+  actor?: AuditActor,
 ): Promise<CheckInScanResult> {
   const path = `bookings/${booking.bookingCode}`;
   const bookingRef = doc(db, 'bookings', booking.bookingCode);
   try {
+    let revertedBooking: Booking | null = null;
     const result = await runTransaction(db, async (tx) => {
       const snap = await tx.get(bookingRef);
       if (!snap.exists()) {
@@ -262,6 +364,7 @@ export async function adminDecrementCheckIn(
         approvalMethod: (nextCount === 0 ? fresh.approvalMethod : method || fresh.approvalMethod).slice(0, 40),
         updatedAt: serverTimestamp(),
       });
+      revertedBooking = fresh;
       return {
         checkedInCount: nextCount,
         quantity: total,
@@ -269,6 +372,22 @@ export async function adminDecrementCheckIn(
         checkedInAt: nextAt,
       };
     });
+
+    if (revertedBooking) {
+      const target = revertedBooking as Booking;
+      await recordAuditLog({
+        action: 'checkin_undone',
+        actor: resolveActor(actor, approverName, 'Super Admin'),
+        targetType: 'booking',
+        targetId: target.bookingCode,
+        targetLabel: target.customerName,
+        details: describeBookingForAudit(target, [
+          method,
+          `Entries ${result.checkedInCount}/${result.quantity}`,
+        ]),
+        amountEgp: 0,
+      });
+    }
     return result;
   } catch (error) {
     if (error instanceof Error && error.message === 'PAYMENT_NOT_PAID') {
@@ -283,22 +402,25 @@ export async function adminToggleCheckIn(
   nextCheckedIn: boolean,
   approverName: string,
   method: string,
+  actor?: AuditActor,
 ): Promise<CheckInScanResult> {
   if (nextCheckedIn) {
-    return adminScanCheckIn(booking, approverName, method);
+    return adminScanCheckIn(booking, approverName, method, actor);
   }
-  return adminDecrementCheckIn(booking, approverName, method);
+  return adminDecrementCheckIn(booking, approverName, method, actor);
 }
 
 export async function adminConfirmAndCheckIn(
   booking: Booking,
   approverName: string,
   method: string,
+  actor?: AuditActor,
 ): Promise<CheckInScanResult> {
   const bookingRef = doc(db, 'bookings', booking.bookingCode);
   const concertRef = doc(db, 'concerts', booking.concertId);
   const timeStamp = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   try {
+    let approvedBooking: Booking | null = null;
     const result = await runTransaction(db, async (tx) => {
       const freshBookingSnap = await tx.get(bookingRef);
       if (!freshBookingSnap.exists()) {
@@ -330,6 +452,7 @@ export async function adminConfirmAndCheckIn(
         });
       }
 
+      approvedBooking = freshBooking;
       return {
         checkedInCount: nextCount,
         quantity: total,
@@ -337,16 +460,36 @@ export async function adminConfirmAndCheckIn(
         checkedInAt: nextAt,
       };
     });
+
+    if (approvedBooking) {
+      const approved = approvedBooking as Booking;
+      await recordAuditLog({
+        action: 'payment_confirmed_checkin',
+        actor: resolveActor(actor, approverName, 'Super Admin'),
+        targetType: 'booking',
+        targetId: approved.bookingCode,
+        targetLabel: approved.customerName,
+        details: describeBookingForAudit(approved, [
+          method,
+          `Entries ${result.checkedInCount}/${result.quantity}`,
+        ]),
+        amountEgp: approved.totalEgp,
+      });
+    }
     return result;
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.bookingCode}`);
   }
 }
 
-export async function adminDeleteBooking(booking: Booking): Promise<void> {
+export async function adminDeleteBooking(
+  booking: Booking,
+  actor?: AuditActor,
+): Promise<void> {
   const bookingRef = doc(db, 'bookings', booking.bookingCode);
   const concertRef = doc(db, 'concerts', booking.concertId);
   try {
+    let deletedSnapshot: Booking | null = null;
     await runTransaction(db, async (tx) => {
       const freshBookingSnap = await tx.get(bookingRef);
       if (!freshBookingSnap.exists()) return;
@@ -365,7 +508,24 @@ export async function adminDeleteBooking(booking: Booking): Promise<void> {
           updatedAt: serverTimestamp(),
         });
       }
+      deletedSnapshot = freshBooking;
     });
+
+    if (deletedSnapshot) {
+      const removed = deletedSnapshot as Booking;
+      await recordAuditLog({
+        action: 'booking_deleted',
+        actor: resolveActor(actor, undefined, 'Super Admin'),
+        targetType: 'booking',
+        targetId: removed.bookingCode,
+        targetLabel: removed.customerName,
+        details: describeBookingForAudit(removed, [
+          `Status: ${removed.paymentStatus}`,
+          removed.approvedBy ? `Approved by: ${removed.approvedBy}` : null,
+        ]),
+        amountEgp: removed.totalEgp,
+      });
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `bookings/${booking.bookingCode}`);
   }
@@ -374,6 +534,7 @@ export async function adminDeleteBooking(booking: Booking): Promise<void> {
 export async function adminCreateOfflineBooking(
   booking: Omit<Booking, 'createdAt' | 'updatedAt'>,
   deductSeats: boolean,
+  actor?: AuditActor,
 ): Promise<void> {
   const bookingRef = doc(db, 'bookings', booking.bookingCode);
   const concertRef = doc(db, 'concerts', booking.concertId);
@@ -399,6 +560,19 @@ export async function adminCreateOfflineBooking(
         });
       }
     });
+
+    await recordAuditLog({
+      action: 'offline_sale_created',
+      actor: resolveActor(actor, booking.approvedBy, 'Super Admin'),
+      targetType: 'booking',
+      targetId: booking.bookingCode,
+      targetLabel: booking.customerName,
+      details: describeBookingForAudit(booking, [
+        booking.checkedIn ? 'Checked in immediately' : null,
+        deductSeats ? 'Seats deducted' : 'No seat deduction',
+      ]),
+      amountEgp: booking.totalEgp,
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `bookings/${booking.bookingCode}`);
   }
@@ -408,6 +582,11 @@ export async function adminBulkImportOfflineBookings(
   concertId: string,
   bookings: Omit<Booking, 'createdAt' | 'updatedAt'>[],
   deductSeats: boolean,
+  auditOptions?: {
+    actor?: AuditActor;
+    sourceLabel?: string;
+    concertTitle?: string;
+  },
 ): Promise<{
   importedCount: number;
   skippedDuplicateCount: number;
@@ -502,6 +681,20 @@ export async function adminBulkImportOfflineBookings(
       });
     }
 
+    const source = auditOptions?.sourceLabel || 'Offline Import';
+    const label = auditOptions?.concertTitle || freshBookings[0]?.concertTitle || concertId;
+    await recordAuditLog({
+      action: 'offline_import',
+      actor: resolveActor(auditOptions?.actor, freshBookings[0]?.approvedBy, 'Super Admin'),
+      targetType: 'import',
+      targetId: concertId,
+      targetLabel: label,
+      details: `${source} · ${freshBookings.length} orders · ${importedTickets} passes${
+        skippedDuplicateCount > 0 ? ` · ${skippedDuplicateCount} dup skipped` : ''
+      }${deductedTickets > 0 ? ` · -${deductedTickets} seats` : ''}`,
+      amountEgp: importedRevenueEgp,
+    });
+
     return {
       importedCount: freshBookings.length,
       skippedDuplicateCount,
@@ -517,6 +710,7 @@ export async function adminBulkImportOfflineBookings(
 export async function adminSaveConcert(
   concert: Omit<Concert, 'createdAt' | 'updatedAt'>,
   isEdit: boolean,
+  actor?: AuditActor,
 ): Promise<void> {
   const path = `concerts/${concert.id}`;
   try {
@@ -550,15 +744,38 @@ export async function adminSaveConcert(
         updatedAt: serverTimestamp(),
       });
     }
+
+    await recordAuditLog({
+      action: isEdit ? 'concert_updated' : 'concert_created',
+      actor: resolveActor(actor, undefined, 'Super Admin'),
+      targetType: 'concert',
+      targetId: concert.id,
+      targetLabel: concert.title,
+      details: `${concert.artist} · ${concert.isoDate} ${concert.isoTime} · ${concert.seatsLeft}/${concert.totalSeats} seats`,
+      amountEgp: 0,
+    });
   } catch (error) {
     handleFirestoreError(error, isEdit ? OperationType.UPDATE : OperationType.CREATE, path);
   }
 }
 
-export async function adminDeleteConcert(concertId: string): Promise<void> {
+export async function adminDeleteConcert(
+  concertId: string,
+  actor?: AuditActor,
+  concertTitle?: string,
+): Promise<void> {
   const path = `concerts/${concertId}`;
   try {
     await deleteDoc(doc(db, 'concerts', concertId));
+    await recordAuditLog({
+      action: 'concert_deleted',
+      actor: resolveActor(actor, undefined, 'Super Admin'),
+      targetType: 'concert',
+      targetId: concertId,
+      targetLabel: concertTitle || concertId,
+      details: 'Removed concert from live lineup',
+      amountEgp: 0,
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -590,6 +807,8 @@ export async function deleteWaitlistEntry(entryId: string): Promise<void> {
 export async function adminSavePromo(
   promo: Omit<Promo, 'createdAt' | 'updatedAt'>,
   isEdit: boolean,
+  actor?: AuditActor,
+  auditAction: AuditAction = 'promo_saved',
 ): Promise<void> {
   const path = `promos/${promo.code}`;
   try {
@@ -610,15 +829,39 @@ export async function adminSavePromo(
         updatedAt: serverTimestamp(),
       });
     }
+
+    const tierText = promo.tiers.length > 0 ? promo.tiers.join(', ') : 'All Tiers';
+    const detail =
+      auditAction === 'promo_toggled'
+        ? `${promo.active ? 'Set Live' : 'Set Hidden'} · ${promo.value}${promo.type === 'percent' ? '%' : ' EGP'} · ${tierText}`
+        : `${isEdit ? 'Updated' : 'Created'} · ${promo.value}${promo.type === 'percent' ? '%' : ' EGP'} · ${tierText}`;
+    await recordAuditLog({
+      action: auditAction,
+      actor: resolveActor(actor, undefined, 'Super Admin'),
+      targetType: 'promo',
+      targetId: promo.code,
+      targetLabel: promo.label,
+      details: detail,
+      amountEgp: 0,
+    });
   } catch (error) {
     handleFirestoreError(error, isEdit ? OperationType.UPDATE : OperationType.CREATE, path);
   }
 }
 
-export async function adminDeletePromo(code: string): Promise<void> {
+export async function adminDeletePromo(code: string, actor?: AuditActor): Promise<void> {
   const path = `promos/${code}`;
   try {
     await deleteDoc(doc(db, 'promos', code));
+    await recordAuditLog({
+      action: 'promo_deleted',
+      actor: resolveActor(actor, undefined, 'Super Admin'),
+      targetType: 'promo',
+      targetId: code,
+      targetLabel: code,
+      details: 'Deleted promo code',
+      amountEgp: 0,
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -629,6 +872,7 @@ export async function adminAddMember(
   email: string,
   role: AdminRole,
   addedBy: string,
+  actor?: AuditActor,
 ): Promise<void> {
   const id = emailToDocId(email);
   const path = `admins/${id}`;
@@ -637,10 +881,12 @@ export async function adminAddMember(
   try {
     const existing = await getDoc(ref);
     exists = existing.exists();
+    const cleanName = name.trim().slice(0, 100);
+    const cleanEmail = email.trim().toLowerCase().slice(0, 120);
     if (exists) {
       await updateDoc(ref, {
-        name: name.trim().slice(0, 100),
-        email: email.trim().toLowerCase().slice(0, 120),
+        name: cleanName,
+        email: cleanEmail,
         role,
         addedBy: addedBy.slice(0, 120),
         updatedAt: serverTimestamp(),
@@ -648,23 +894,48 @@ export async function adminAddMember(
     } else {
       await setDoc(ref, {
         id,
-        name: name.trim().slice(0, 100),
-        email: email.trim().toLowerCase().slice(0, 120),
+        name: cleanName,
+        email: cleanEmail,
         role,
         addedBy: addedBy.slice(0, 120),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     }
+
+    await recordAuditLog({
+      action: 'staff_saved',
+      actor: resolveActor(actor, undefined, 'Super Admin'),
+      targetType: 'staff',
+      targetId: id,
+      targetLabel: cleanName,
+      details: `${exists ? 'Updated' : 'Added'} ${cleanEmail} · ${role}`,
+      amountEgp: 0,
+    });
   } catch (error) {
     handleFirestoreError(error, exists ? OperationType.UPDATE : OperationType.CREATE, path);
   }
 }
 
-export async function adminRemoveMember(id: string): Promise<void> {
+export async function adminRemoveMember(
+  id: string,
+  actor?: AuditActor,
+  memberMeta?: Pick<AdminMember, 'name' | 'email' | 'role'>,
+): Promise<void> {
   const path = `admins/${id}`;
   try {
     await deleteDoc(doc(db, 'admins', id));
+    await recordAuditLog({
+      action: 'staff_removed',
+      actor: resolveActor(actor, undefined, 'Super Admin'),
+      targetType: 'staff',
+      targetId: id,
+      targetLabel: memberMeta?.name || id,
+      details: memberMeta
+        ? `Revoked ${memberMeta.email} · ${memberMeta.role}`
+        : 'Revoked staff access',
+      amountEgp: 0,
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -743,6 +1014,7 @@ export async function removeAdminSession(sessionId: string): Promise<void> {
 export async function adminSavePaymentConfig(
   payload: { instapayNumber: string; walletNumber: string },
   updatedBy: string,
+  actor?: AuditActor,
 ): Promise<void> {
   const id = PAYMENT_CONFIG_DOC_ID;
   const path = `paymentConfig/${id}`;
@@ -771,6 +1043,16 @@ export async function adminSavePaymentConfig(
         updatedAt: serverTimestamp(),
       });
     }
+
+    await recordAuditLog({
+      action: 'payment_numbers_updated',
+      actor: resolveActor(actor, cleanUpdatedBy, 'Super Admin'),
+      targetType: 'paymentConfig',
+      targetId: id,
+      targetLabel: 'Payment Numbers',
+      details: `InstaPay: ${cleanInstapay} · Wallet: ${cleanWallet}`,
+      amountEgp: 0,
+    });
   } catch (error) {
     handleFirestoreError(error, exists ? OperationType.UPDATE : OperationType.CREATE, path);
   }

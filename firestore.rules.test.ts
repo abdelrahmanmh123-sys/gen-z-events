@@ -139,7 +139,7 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.ok(concertExistsChecks.length >= 2, 'Both bookings and waitlist must verify parent concert existence');
   });
 
-  it('blocks shadow field injection via hasOnly key allowlists on all 8 active entities', () => {
+  it('blocks shadow field injection via hasOnly key allowlists on all 9 active entities', () => {
     const validators = [
       'isValidConcert',
       'isValidBooking',
@@ -149,6 +149,7 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
       'isValidAdminMember',
       'isValidAdminSession',
       'isValidPaymentConfig',
+      'isValidAuditLog',
     ];
     for (const fn of validators) {
       assert.ok(rulesText.includes(`function ${fn}(`), `Missing validator ${fn}`);
@@ -240,5 +241,28 @@ describe('Firestore Rules — Dirty Dozen & Strict Email-Verified Security Invar
     assert.match(rulesText, /replace\('\[\^a-z0-9_\\\\-\]',\s*'_'\)/);
     assert.doesNotMatch(rulesText, /isAuthenticatedFan/);
     assert.match(rulesText, /!\('checkedInCount' in existing\(\)\)\s*\|\|\s*'checkedInCount' in incoming\(\)/);
+  });
+
+  it('enforces append-only, identity-bound Super Admin-read staff audit logs on /auditLogs/{logId}', () => {
+    const auditFn = extractFunctionBody('isValidAuditLog');
+    assert.match(auditFn, /'payment_confirmed'/);
+    assert.match(auditFn, /'payment_undone'/);
+    assert.match(auditFn, /'booking_deleted'/);
+    assert.match(auditFn, /data\.id\s*==\s*docId/);
+    assert.match(auditFn, /data\.createdAt\s+is\s+timestamp/);
+
+    const matchIdx = rulesText.indexOf('match /auditLogs/{logId}');
+    assert.ok(matchIdx !== -1, 'Expected match /auditLogs/{logId} block');
+    const block = rulesText.slice(matchIdx);
+    assert.match(block, /allow\s+get:\s*if\s+isValidId\(logId\)\s*&&\s*isSuperAdmin\(\);/);
+    assert.match(block, /allow\s+list:\s*if\s+isSuperAdmin\(\);/);
+    assert.match(block, /incoming\(\)\.actorUid\s*==\s*request\.auth\.uid/);
+    assert.match(block, /incoming\(\)\.actorEmail\s*==\s*request\.auth\.token\.email\.lower\(\)/);
+    assert.match(block, /incoming\(\)\.createdAt\s*==\s*request\.time/);
+    assert.match(
+      block,
+      /isGateStaff\(\)\s*&&\s*incoming\(\)\.actorRole\s*==\s*'Gate Staff'\s*&&\s*incoming\(\)\.action\s+in\s+\['checkin',\s*'checkin_undone',\s*'offline_sale_created',\s*'offline_import'\]/,
+    );
+    assert.match(block, /allow\s+update,\s*delete:\s*if\s+false;/);
   });
 });

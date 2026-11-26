@@ -1,4 +1,11 @@
-import type { AdminRole, OnlinePaymentMethodId, PaymentConfig, PaymentMethodId, TierId } from '../types';
+import type {
+  AdminRole,
+  AuditAction,
+  OnlinePaymentMethodId,
+  PaymentConfig,
+  PaymentMethodId,
+  TierId,
+} from '../types';
 import { PAYMENT_PHONE_NUMBER, PAYMENT_WHATSAPP_DISPLAY } from '../data/defaults';
 
 export type Language = 'en' | 'ar';
@@ -259,6 +266,51 @@ export function getGenreLabel(genre: string, lang: Language): string {
 export function getAdminRoleLabel(role: AdminRole, lang: Language): string {
   if (lang === 'en') return role;
   return role === 'Super Admin' ? 'مدير عام' : 'فريق البوابة';
+}
+
+export const AUDIT_ACTION_LABELS: Record<Language, Record<AuditAction, string>> = {
+  en: {
+    payment_confirmed: 'Payment Confirmed',
+    payment_undone: 'Payment Undone',
+    payment_confirmed_checkin: 'Paid + Checked In',
+    checkin: 'Gate Check-In',
+    checkin_undone: 'Check-In Reverted',
+    booking_deleted: 'Booking Deleted',
+    offline_sale_created: 'Offline Sale',
+    offline_import: 'Offline Bulk Import',
+    concert_created: 'Concert Created',
+    concert_updated: 'Concert Updated',
+    concert_deleted: 'Concert Deleted',
+    promo_saved: 'Promo Saved',
+    promo_toggled: 'Promo Visibility',
+    promo_deleted: 'Promo Deleted',
+    staff_saved: 'Staff Authorized',
+    staff_removed: 'Staff Revoked',
+    payment_numbers_updated: 'Payment Numbers Updated',
+  },
+  ar: {
+    payment_confirmed: 'تأكيد دفع',
+    payment_undone: 'تراجع عن الدفع',
+    payment_confirmed_checkin: 'تأكيد دفع + دخول',
+    checkin: 'تسجيل دخول بوابة',
+    checkin_undone: 'تراجع عن الدخول',
+    booking_deleted: 'حذف حجز',
+    offline_sale_created: 'بيع أوفلاين',
+    offline_import: 'استيراد أوفلاين جماعي',
+    concert_created: 'إنشاء حفل',
+    concert_updated: 'تعديل حفل',
+    concert_deleted: 'حذف حفل',
+    promo_saved: 'حفظ كود خصم',
+    promo_toggled: 'تغيير حالة كود خصم',
+    promo_deleted: 'حذف كود خصم',
+    staff_saved: 'تفويض عضو فريق',
+    staff_removed: 'إلغاء صلاحية عضو',
+    payment_numbers_updated: 'تحديث أرقام الدفع',
+  },
+};
+
+export function getAuditActionLabel(action: AuditAction, lang: Language): string {
+  return AUDIT_ACTION_LABELS[lang][action] || action;
 }
 
 export const SWATCH_NAME_AR: Record<string, string> = {
@@ -663,6 +715,7 @@ export const translations = {
     tabManage: 'Manage & CSV',
     tabPromos: 'Promo Codes',
     tabTeam: 'Admin Team',
+    tabAuditLog: 'Audit Log',
     kpiLiveEvents: 'Live Events',
     kpiSeatsLeft: 'Seats Left',
     kpiTicketsSold: 'Tickets Sold',
@@ -894,6 +947,42 @@ export const translations = {
     activeSessionsSubtitle:
       'Real-time Firestore Cloud Sync is active across all verified organizer devices.',
     currentSessionActive: 'Current session active.',
+
+    // Admin Audit Log
+    auditLogTitle: 'Staff Action Audit Log',
+    auditImmutableBadge: 'Immutable · Append-Only',
+    auditLogSubtitle:
+      'Permanent history of every payment confirmation, Undo Pay, check-in, deletion, and admin change with verified staff identity.',
+    auditExportCsv: 'Export Audit CSV',
+    auditRulesNotDeployedTitle: 'Firestore rules update needed for Audit Log',
+    auditRulesNotDeployedBody:
+      'Deploy the updated firestore.rules to Firebase so /auditLogs records can be read and saved:',
+    auditKpiTotal: 'Logged Actions',
+    auditKpiConfirmed: 'Payments Confirmed',
+    auditKpiSensitive: 'Reversals & Deletions',
+    auditKpiCheckins: 'Gate Check-Ins',
+    auditSearchPlaceholder: 'Search by booking code, guest, staff, or details...',
+    auditStaffFilterAria: 'Filter audit log by staff member',
+    auditAllStaffOpt: 'All Staff Members',
+    auditFilterAll: 'All',
+    auditFilterSensitive: 'Reversals & Deletions',
+    auditFilterPayments: 'Payments',
+    auditFilterCheckins: 'Check-Ins',
+    auditFilterOffline: 'Offline',
+    auditFilterDeletions: 'Deletions',
+    auditFilterSettings: 'Concerts & Settings',
+    auditEmptyTitle: 'No staff actions logged yet',
+    auditEmptyBody:
+      'Every payment confirmation, Undo Pay, check-in, deletion, and config change will appear here automatically.',
+    auditNoMatchesTitle: 'No audit entries match your filters',
+    auditNoMatchesBody: 'Clear your search or choose another category/staff filter.',
+    auditColTime: 'Time',
+    auditColAction: 'Action',
+    auditColStaff: 'Staff Member',
+    auditColTarget: 'Target / Code',
+    auditColDetails: 'Details',
+    auditColAmount: 'Amount',
+    auditLoadMoreBtn: 'Load Older Actions',
   },
   ar: {
     siteTitle: 'Gen Z Events — حفلات قنا المباشرة',
@@ -1160,6 +1249,7 @@ export const translations = {
     tabManage: 'الإدارة والتصدير',
     tabPromos: 'أكواد الخصم',
     tabTeam: 'فريق الإدارة',
+    tabAuditLog: 'سجل التدقيق',
     kpiLiveEvents: 'الحفلات النشطة',
     kpiSeatsLeft: 'المقاعد المتبقية',
     kpiTicketsSold: 'التذاكر المباعة',
@@ -1391,6 +1481,42 @@ export const translations = {
     activeSessionsSubtitle:
       'المزامنة السحابية الفورية نشطة عبر جميع أجهزة المنظمين المفعّلين.',
     currentSessionActive: 'جلستك الحالية نشطة.',
+
+    // Admin Audit Log
+    auditLogTitle: 'سجل نشاط وتدقيق الفريق',
+    auditImmutableBadge: 'سجل دائم غير قابل للتعديل',
+    auditLogSubtitle:
+      'سجل كامل لكل عملية تأكيد دفع، تراجع عن الدفع، تسجيل دخول، حذف، أو تعديل إداري باسم وهوية المسؤول الموثّقة.',
+    auditExportCsv: 'تصدير السجل CSV',
+    auditRulesNotDeployedTitle: 'مطلوب رفع قواعد Firestore الجديدة لتفعيل سجل التدقيق',
+    auditRulesNotDeployedBody:
+      'نفّذ الأمر التالي لرفع ملف firestore.rules المحدّث إلى Firebase لتفعيل حفظ وقراءة سجل التدقيق:',
+    auditKpiTotal: 'إجمالي العمليات',
+    auditKpiConfirmed: 'دفعات مؤكدة',
+    auditKpiSensitive: 'عمليات تراجع وحذف',
+    auditKpiCheckins: 'تسجيلات دخول',
+    auditSearchPlaceholder: 'ابحث بكود الحجز، اسم العميل، الموظف، أو التفاصيل...',
+    auditStaffFilterAria: 'تصفية سجل التدقيق حسب عضو الفريق',
+    auditAllStaffOpt: 'كل أعضاء الفريق',
+    auditFilterAll: 'الكل',
+    auditFilterSensitive: 'التراجع والحذف',
+    auditFilterPayments: 'المدفوعات',
+    auditFilterCheckins: 'دخول البوابة',
+    auditFilterOffline: 'الأوفلاين',
+    auditFilterDeletions: 'المحذوفات',
+    auditFilterSettings: 'الحفلات والإعدادات',
+    auditEmptyTitle: 'لا توجد عمليات مسجلة بعد',
+    auditEmptyBody:
+      'كل عملية تأكيد دفع أو تراجع عن الدفع أو دخول بوابة أو حذف ستظهر هنا تلقائياً بالوقت واسم المسؤول.',
+    auditNoMatchesTitle: 'لا توجد سجلات مطابقة للفلتر',
+    auditNoMatchesBody: 'امسح نص البحث أو غيّر التصنيف أو الموظف لعرض باقي السجلات.',
+    auditColTime: 'الوقت',
+    auditColAction: 'الإجراء',
+    auditColStaff: 'المسؤول',
+    auditColTarget: 'الهدف / الكود',
+    auditColDetails: 'التفاصيل',
+    auditColAmount: 'المبلغ',
+    auditLoadMoreBtn: 'تحميل عمليات أقدم',
   },
 } as const;
 

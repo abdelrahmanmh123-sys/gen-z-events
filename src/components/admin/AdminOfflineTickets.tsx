@@ -23,7 +23,7 @@ import {
   adminScanCheckIn,
   adminUndoPayment,
 } from '../../services/firestoreService';
-import type { Booking, Concert, TierId } from '../../types';
+import type { AdminRole, Booking, Concert, TierId } from '../../types';
 import {
   formatCheckInProgress,
   generateBookingCode,
@@ -57,6 +57,7 @@ interface AdminOfflineTicketsProps {
   bookings: Booking[];
   adminName: string;
   adminEmail: string;
+  adminRole: AdminRole;
   canConfirmPayments: boolean;
   canUndoPayments: boolean;
   canDeleteBookings: boolean;
@@ -69,12 +70,14 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
   bookings,
   adminName,
   adminEmail,
+  adminRole,
   canConfirmPayments,
   canUndoPayments,
   canDeleteBookings,
   canViewRevenueAnalytics,
   onNotify,
 }) => {
+  const actor = useMemo(() => ({ name: adminName, role: adminRole }), [adminName, adminRole]);
   const { lang, isAr, t } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -217,6 +220,11 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
         importConcert.id,
         parsedImport.validBookings,
         deductSeatsOnImport,
+        {
+          actor,
+          sourceLabel: rawImportFile?.fileName ? `Excel (${rawImportFile.fileName})` : 'Excel Import',
+          concertTitle: importConcert.title,
+        },
       );
       setRawImportFile(null);
       const dupSuffix =
@@ -324,6 +332,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
           customerEmail: manualEmail.trim().toLowerCase().slice(0, 120),
         },
         manualDeductSeats,
+        actor,
       );
       setManualName('');
       setManualMobile('');
@@ -349,7 +358,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
     setBusyCode(b.bookingCode);
     try {
       if (direction === 'admit') {
-        const res = await adminScanCheckIn(b, adminName, 'Offline Roster');
+        const res = await adminScanCheckIn(b, adminName, 'Offline Roster', actor);
         const counterSuffix =
           res.quantity > 1 ? ` ${formatCheckInProgress(res.checkedInCount, res.quantity)}` : '';
         onNotify(
@@ -358,7 +367,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
             : `Checked in ${b.bookingCode}${counterSuffix}.`,
         );
       } else {
-        const res = await adminDecrementCheckIn(b, adminName, 'Offline Roster');
+        const res = await adminDecrementCheckIn(b, adminName, 'Offline Roster', actor);
         const counterSuffix =
           res.quantity > 1 ? ` ${formatCheckInProgress(res.checkedInCount, res.quantity)}` : '';
         onNotify(
@@ -378,7 +387,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
     if (!canConfirmPayments) return;
     setBusyCode(b.bookingCode);
     try {
-      await adminConfirmPayment(b, adminName, 'Offline Desk Confirm');
+      await adminConfirmPayment(b, adminName, 'Offline Desk Confirm', actor);
       onNotify(
         isAr
           ? `تم تأكيد الدفع للسجل الأوفلاين ${b.bookingCode}.`
@@ -395,7 +404,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
     if (!canUndoPayments) return;
     setBusyCode(b.bookingCode);
     try {
-      const reverted = await adminUndoPayment(b);
+      const reverted = await adminUndoPayment(b, actor);
       setConfirmUndoPayCode(null);
       if (!reverted) {
         onNotify(
@@ -421,7 +430,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
     if (!canDeleteBookings) return;
     setBusyCode(b.bookingCode);
     try {
-      await adminDeleteBooking(b);
+      await adminDeleteBooking(b, actor);
       setConfirmDeleteCode(null);
       onNotify(
         isAr
@@ -556,6 +565,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
         existingCodes={existingCodes}
         adminName={adminName}
         adminEmail={adminEmail}
+        adminRole={adminRole}
         canViewRevenueAnalytics={canViewRevenueAnalytics}
         onNotify={onNotify}
       />

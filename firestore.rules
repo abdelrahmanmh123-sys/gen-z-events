@@ -320,6 +320,37 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidAuditLog(data, docId) {
+      return data.keys().hasAll([
+          'id', 'action', 'actorUid', 'actorName', 'actorEmail', 'actorRole',
+          'targetType', 'targetId', 'targetLabel', 'details', 'amountEgp', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'action', 'actorUid', 'actorName', 'actorEmail', 'actorRole',
+          'targetType', 'targetId', 'targetLabel', 'details', 'amountEgp', 'createdAt'
+        ])
+        && data.id == docId
+        && isValidId(data.id) && data.id.size() >= 8 && data.id.size() <= 64
+        && data.action is string && data.action in [
+          'payment_confirmed', 'payment_undone', 'payment_confirmed_checkin',
+          'checkin', 'checkin_undone', 'booking_deleted',
+          'offline_sale_created', 'offline_import',
+          'concert_created', 'concert_updated', 'concert_deleted',
+          'promo_saved', 'promo_toggled', 'promo_deleted',
+          'staff_saved', 'staff_removed', 'payment_numbers_updated'
+        ]
+        && isValidId(data.actorUid)
+        && isValidString(data.actorName, 1, 100)
+        && isValidString(data.actorEmail, 3, 120)
+        && data.actorRole is string && data.actorRole in ['Super Admin', 'Gate Staff']
+        && data.targetType is string && data.targetType in ['booking', 'concert', 'promo', 'staff', 'paymentConfig', 'import']
+        && isValidString(data.targetId, 0, 128)
+        && isValidString(data.targetLabel, 0, 160)
+        && isValidString(data.details, 0, 300)
+        && (data.amountEgp is int || data.amountEgp is float) && data.amountEgp >= 0 && data.amountEgp <= 50000000
+        && data.createdAt is timestamp;
+    }
+
     // =========================================================================
     // COLLECTIONS
     // =========================================================================
@@ -570,6 +601,26 @@ service cloud.firestore {
       allow delete: if isVerified()
         && isValidId(configId)
         && isSuperAdmin();
+    }
+
+    // 9. Audit Logs: Append-only, identity-bound staff action history (Super Admin read; never edited or deleted)
+    match /auditLogs/{logId} {
+      allow get: if isValidId(logId) && isSuperAdmin();
+      allow list: if isSuperAdmin();
+      allow create: if isVerified()
+        && isValidId(logId)
+        && isValidAuditLog(incoming(), logId)
+        && incoming().actorUid == request.auth.uid
+        && incoming().actorEmail == request.auth.token.email.lower()
+        && incoming().createdAt == request.time
+        && (
+          (isSuperAdmin() && incoming().actorRole == 'Super Admin') || (
+            isGateStaff()
+            && incoming().actorRole == 'Gate Staff'
+            && incoming().action in ['checkin', 'checkin_undone', 'offline_sale_created', 'offline_import']
+          )
+        );
+      allow update, delete: if false;
     }
   }
 }

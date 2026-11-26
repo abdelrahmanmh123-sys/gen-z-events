@@ -7,6 +7,7 @@ import {
   formatCurrencyEgp,
   formatPromoTiersSummary,
   getAdminRoleLabel,
+  getAuditActionLabel,
   getDirection,
   getGenreLabel,
   getPaymentMethodLabel,
@@ -24,6 +25,7 @@ import {
   toAsciiDigits,
   validateEgyptianMobile,
 } from '../utils/bookingLogic';
+import { AUDIT_ACTIONS } from '../utils/auditLog';
 
 test('translations.en and translations.ar have identical non-empty keys', () => {
   const enKeys = Object.keys(translations.en).sort();
@@ -215,4 +217,13 @@ test('formatPromoTiersSummary and localizeKnownMessage handle individual and mul
     localizeKnownMessage('TRIO20 applies only to Silver, Gold & VIP passes.', 'ar'),
     'الكود TRIO20 ينطبق فقط على فئات سيلفر (Silver)، جولد (Gold) و فان بيت (Fan Pit).',
   );
+});
+
+test('getAuditActionLabel returns non-empty EN and AR labels for every audit action', () => {
+  for (const action of AUDIT_ACTIONS) {
+    assert.ok(getAuditActionLabel(action, 'en').trim().length > 0, `Missing EN label for ${action}`);
+    assert.ok(getAuditActionLabel(action, 'ar').trim().length > 0, `Missing AR label for ${action}`);
+  }
+  assert.equal(getAuditActionLabel('payment_undone', 'en'), 'Payment Undone');
+  assert.equal(getAuditActionLabel('payment_undone', 'ar'), 'تراجع عن الدفع');
 });

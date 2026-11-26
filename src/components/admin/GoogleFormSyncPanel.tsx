@@ -31,7 +31,7 @@ import {
   GoogleFormsApiError,
   subscribeFormsAuthChange,
 } from '../../services/googleFormsService';
-import type { Concert, PaymentStatus } from '../../types';
+import type { AdminRole, Concert, PaymentStatus } from '../../types';
 import { getTierColorHex, isSafeHttpsUrl } from '../../utils/bookingLogic';
 import {
   autoMapFormQuestions,
@@ -55,6 +55,7 @@ interface GoogleFormSyncPanelProps {
   existingCodes: Set<string>;
   adminName: string;
   adminEmail: string;
+  adminRole: AdminRole;
   canViewRevenueAnalytics: boolean;
   onNotify: (msg: string) => void;
 }
@@ -85,6 +86,7 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
   existingCodes,
   adminName,
   adminEmail,
+  adminRole,
   canViewRevenueAnalytics,
   onNotify,
 }) => {
@@ -315,6 +317,11 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
         activeConcert.id,
         syncResult.newBookings,
         deductSeats,
+        {
+          actor: { name: adminName, role: adminRole },
+          sourceLabel: formSchema?.title ? `Google Form (${formSchema.title})` : 'Google Form Sync',
+          concertTitle: activeConcert.title,
+        },
       );
       const dupSuffix =
         res.skippedDuplicateCount > 0

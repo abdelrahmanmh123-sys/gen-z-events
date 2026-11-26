@@ -547,7 +547,15 @@ export function computeAdminKpis(concerts: Concert[], bookings: Booking[]) {
   };
 }
 
-export type AdminTab = 'dashboard' | 'checkin' | 'offline' | 'schedule' | 'manage' | 'promos' | 'team';
+export type AdminTab =
+  | 'dashboard'
+  | 'checkin'
+  | 'offline'
+  | 'schedule'
+  | 'manage'
+  | 'promos'
+  | 'team'
+  | 'audit';
 
 export interface StaffPermissions {
   isSuperAdmin: boolean;
@@ -564,11 +572,12 @@ export interface StaffPermissions {
   canManageConcerts: boolean;
   canManagePromos: boolean;
   canManageTeam: boolean;
+  canViewAuditLog: boolean;
 }
 
 /**
  * Resolves strict Role-Based Access Control (RBAC) capabilities for the Staff Portal.
- * - Super Admin: Full access across all 7 tabs, payment confirmation/undo, deletions, and team management.
+ * - Super Admin: Full access across all 8 tabs, payment confirmation/undo, deletions, team management, and audit log.
  * - Gate Staff: Strictly restricted to Gate QR Check-In (check-in only, no payment confirmation/undo or deletion),
  *   Offline Tickets, and Recent Payment & Gate Approvals log.
  */
@@ -577,7 +586,7 @@ export function getStaffPermissions(role: AdminRole | null | undefined): StaffPe
     return {
       isSuperAdmin: true,
       isGateStaff: false,
-      allowedTabs: ['dashboard', 'checkin', 'offline', 'schedule', 'manage', 'promos', 'team'],
+      allowedTabs: ['dashboard', 'checkin', 'offline', 'schedule', 'manage', 'promos', 'team', 'audit'],
       defaultTab: 'dashboard',
       canGateCheckIn: true,
       canConfirmPayments: true,
@@ -589,6 +598,7 @@ export function getStaffPermissions(role: AdminRole | null | undefined): StaffPe
       canManageConcerts: true,
       canManagePromos: true,
       canManageTeam: true,
+      canViewAuditLog: true,
     };
   }
   if (role === 'Gate Staff') {
@@ -607,6 +617,7 @@ export function getStaffPermissions(role: AdminRole | null | undefined): StaffPe
       canManageConcerts: false,
       canManagePromos: false,
       canManageTeam: false,
+      canViewAuditLog: false,
     };
   }
   return {
@@ -624,6 +635,7 @@ export function getStaffPermissions(role: AdminRole | null | undefined): StaffPe
     canManageConcerts: false,
     canManagePromos: false,
     canManageTeam: false,
+    canViewAuditLog: false,
   };
 }
 

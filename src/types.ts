@@ -157,4 +157,47 @@ export interface PaymentConfig {
   updatedAt?: unknown;
 }
 
+export type AuditAction =
+  | 'payment_confirmed'
+  | 'payment_undone'
+  | 'payment_confirmed_checkin'
+  | 'checkin'
+  | 'checkin_undone'
+  | 'booking_deleted'
+  | 'offline_sale_created'
+  | 'offline_import'
+  | 'concert_created'
+  | 'concert_updated'
+  | 'concert_deleted'
+  | 'promo_saved'
+  | 'promo_toggled'
+  | 'promo_deleted'
+  | 'staff_saved'
+  | 'staff_removed'
+  | 'payment_numbers_updated';
+
+export type AuditTargetType = 'booking' | 'concert' | 'promo' | 'staff' | 'paymentConfig' | 'import';
+
+/** Who performed a staff action (identity uid/email are always taken from Firebase Auth). */
+export interface AuditActor {
+  name: string;
+  role: AdminRole;
+}
+
+/** Immutable, append-only staff action record stored in /auditLogs/{id}. */
+export interface AuditLogEntry {
+  id: string;
+  action: AuditAction;
+  actorUid: string;
+  actorName: string;
+  actorEmail: string;
+  actorRole: AdminRole;
+  targetType: AuditTargetType;
+  targetId: string;
+  targetLabel: string;
+  details: string;
+  amountEgp: number;
+  createdAt?: unknown;
+}
+
 export type SortOption = 'date-asc' | 'price-asc' | 'price-desc';

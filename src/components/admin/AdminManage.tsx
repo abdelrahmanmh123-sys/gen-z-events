@@ -43,6 +43,7 @@ interface AdminManageProps {
   concerts: Concert[];
   bookings: Booking[];
   waitlist: WaitlistEntry[];
+  adminName: string;
   onNotify: (msg: string) => void;
 }
 
@@ -50,6 +51,7 @@ export const AdminManage: React.FC<AdminManageProps> = ({
   concerts,
   bookings,
   waitlist,
+  adminName,
   onNotify,
 }) => {
   const { lang, t } = useLanguage();
@@ -216,7 +218,7 @@ export const AdminManage: React.FC<AdminManageProps> = ({
 
     setBusyId(editingConcert.id);
     try {
-      await adminSaveConcert(validation.concert, true);
+      await adminSaveConcert(validation.concert, true, { name: adminName, role: 'Super Admin' });
       setEditingConcert(null);
       setEditError('');
       onNotify(
@@ -236,7 +238,7 @@ export const AdminManage: React.FC<AdminManageProps> = ({
   const handleDeleteConcert = async (c: Concert) => {
     setBusyId(c.id);
     try {
-      await adminDeleteConcert(c.id);
+      await adminDeleteConcert(c.id, { name: adminName, role: 'Super Admin' }, c.title);
       setConfirmDeleteId(null);
       if (editingConcert?.id === c.id) {
         setEditingConcert(null);

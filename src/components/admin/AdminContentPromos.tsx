@@ -19,11 +19,13 @@ import {
 
 interface AdminContentPromosProps {
   promos: Promo[];
+  adminName: string;
   onNotify: (msg: string) => void;
 }
 
 export const AdminContentPromos: React.FC<AdminContentPromosProps> = ({
   promos,
+  adminName,
   onNotify,
 }) => {
   const { lang, t } = useLanguage();
@@ -118,6 +120,8 @@ export const AdminContentPromos: React.FC<AdminContentPromosProps> = ({
           active: existingPromo ? existingPromo.active : true,
         },
         existing,
+        { name: adminName, role: 'Super Admin' },
+        'promo_saved',
       );
       resetForm();
       onNotify(isAr ? `تم حفظ كود الخصم ${cleanCode}.` : `Saved promo code ${cleanCode}.`);
@@ -132,7 +136,12 @@ export const AdminContentPromos: React.FC<AdminContentPromosProps> = ({
     if (busyCode === p.code) return;
     setBusyCode(p.code);
     try {
-      await adminSavePromo({ ...p, active: !p.active }, true);
+      await adminSavePromo(
+        { ...p, active: !p.active },
+        true,
+        { name: adminName, role: 'Super Admin' },
+        'promo_toggled',
+      );
       onNotify(
         isAr
           ? `أصبح الكود ${p.code} الآن ${!p.active ? 'مفعّلاً' : 'مخفياً'}.`
@@ -149,7 +158,7 @@ export const AdminContentPromos: React.FC<AdminContentPromosProps> = ({
     if (busyCode === code) return;
     setBusyCode(code);
     try {
-      await adminDeletePromo(code);
+      await adminDeletePromo(code, { name: adminName, role: 'Super Admin' });
       setConfirmDeleteCode(null);
       if (editingCode === code) {
         resetForm();

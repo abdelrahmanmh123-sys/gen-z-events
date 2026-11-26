@@ -5,6 +5,7 @@ import {
   CalendarPlus,
   ClipboardList,
   Globe,
+  History,
   QrCode,
   Settings2,
   Store,
@@ -16,6 +17,7 @@ import type {
   AdminMember,
   AdminRole,
   AdminSession,
+  AuditLogEntry,
   Booking,
   Concert,
   Promo,
@@ -35,6 +37,7 @@ import { AdminSchedule } from './AdminSchedule';
 import { AdminManage } from './AdminManage';
 import { AdminContentPromos } from './AdminContentPromos';
 import { AdminTeam } from './AdminTeam';
+import { AdminAuditLog } from './AdminAuditLog';
 
 interface AdminWorkspaceProps {
   concerts: Concert[];
@@ -43,6 +46,10 @@ interface AdminWorkspaceProps {
   waitlist: WaitlistEntry[];
   admins: AdminMember[];
   sessions: AdminSession[];
+  auditLogs: AuditLogEntry[];
+  auditLogLoadError: boolean;
+  canLoadMoreAuditLogs: boolean;
+  onLoadMoreAuditLogs: () => void;
   adminName: string;
   adminEmail: string;
   adminRole: AdminRole;
@@ -58,6 +65,10 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
   waitlist,
   admins,
   sessions,
+  auditLogs,
+  auditLogLoadError,
+  canLoadMoreAuditLogs,
+  onLoadMoreAuditLogs,
   adminName,
   adminEmail,
   adminRole,
@@ -106,6 +117,12 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
           { id: 'manage', label: t.tabManage, icon: Settings2 },
           { id: 'promos', label: t.tabPromos, icon: Tag },
           { id: 'team', label: t.tabTeam, icon: Users },
+          {
+            id: 'audit',
+            label: t.tabAuditLog,
+            icon: History,
+            badge: auditLogs.length > 0 ? auditLogs.length : undefined,
+          },
         ]
       : [
           { id: 'checkin', label: t.tabCheckin, icon: QrCode },
@@ -118,7 +135,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
           { id: 'dashboard', label: t.tabRecentApprovals, icon: ClipboardList },
         ];
     return allItems.filter((item) => permissions.allowedTabs.includes(item.id));
-  }, [permissions, t, offlineCount]);
+  }, [permissions, t, offlineCount, auditLogs.length]);
 
   const visibleKpis = useMemo(() => {
     const base: Array<{ label: string; value: string; tone: string; isPrice?: boolean }> = [
@@ -266,6 +283,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
             <AdminCheckin
               bookings={bookings}
               adminName={adminName}
+              adminRole={adminRole}
               isVerifiedStaff={isVerifiedStaff}
               canConfirmPayments={permissions.canConfirmPayments}
               canUndoPayments={permissions.canUndoPayments}
@@ -279,6 +297,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
               bookings={bookings}
               adminName={adminName}
               adminEmail={adminEmail}
+              adminRole={adminRole}
               canConfirmPayments={permissions.canConfirmPayments}
               canUndoPayments={permissions.canUndoPayments}
               canDeleteBookings={permissions.canDeleteBookings}
@@ -288,6 +307,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
           )}
           {effectiveTab === 'schedule' && permissions.canManageConcerts && (
             <AdminSchedule
+              adminName={adminName}
               onNotify={onNotify}
               onCreated={() => setActiveTab('manage')}
             />
@@ -297,12 +317,14 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
               concerts={concerts}
               bookings={bookings}
               waitlist={waitlist}
+              adminName={adminName}
               onNotify={onNotify}
             />
           )}
           {effectiveTab === 'promos' && permissions.canManagePromos && (
             <AdminContentPromos
               promos={promos}
+              adminName={adminName}
               onNotify={onNotify}
             />
           )}
@@ -310,7 +332,17 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
             <AdminTeam
               admins={admins}
               sessions={sessions}
+              currentAdminName={adminName}
               currentAdminEmail={adminEmail}
+              onNotify={onNotify}
+            />
+          )}
+          {effectiveTab === 'audit' && permissions.canViewAuditLog && (
+            <AdminAuditLog
+              logs={auditLogs}
+              loadError={auditLogLoadError}
+              canLoadMore={canLoadMoreAuditLogs}
+              onLoadMore={onLoadMoreAuditLogs}
               onNotify={onNotify}
             />
           )}

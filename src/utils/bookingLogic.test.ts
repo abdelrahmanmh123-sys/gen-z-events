@@ -488,6 +488,7 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
       'manage',
       'promos',
       'team',
+      'audit',
     ]);
     assert.equal(superPerms.canConfirmPayments, true);
     assert.equal(superPerms.canUndoPayments, true);
@@ -499,6 +500,7 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.equal(superPerms.canManageConcerts, true);
     assert.equal(superPerms.canManagePromos, true);
     assert.equal(superPerms.canManageTeam, true);
+    assert.equal(superPerms.canViewAuditLog, true);
 
     const gatePerms = getStaffPermissions('Gate Staff');
     assert.equal(gatePerms.isSuperAdmin, false);
@@ -515,6 +517,7 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.equal(gatePerms.canManageConcerts, false);
     assert.equal(gatePerms.canManagePromos, false);
     assert.equal(gatePerms.canManageTeam, false);
+    assert.equal(gatePerms.canViewAuditLog, false);
 
     assert.equal(canAccessAdminTab('Gate Staff', 'checkin'), true);
     assert.equal(canAccessAdminTab('Gate Staff', 'offline'), true);
@@ -523,13 +526,17 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.equal(canAccessAdminTab('Gate Staff', 'manage'), false);
     assert.equal(canAccessAdminTab('Gate Staff', 'promos'), false);
     assert.equal(canAccessAdminTab('Gate Staff', 'team'), false);
+    assert.equal(canAccessAdminTab('Gate Staff', 'audit'), false);
+    assert.equal(canAccessAdminTab('Super Admin', 'audit'), true);
 
     const noPerms = getStaffPermissions(null);
     assert.deepEqual(noPerms.allowedTabs, []);
     assert.equal(noPerms.canGateCheckIn, false);
     assert.equal(noPerms.canConfirmPayments, false);
     assert.equal(noPerms.canUndoPayments, false);
+    assert.equal(noPerms.canViewAuditLog, false);
     assert.equal(canAccessAdminTab(null, 'checkin'), false);
+    assert.equal(canAccessAdminTab(null, 'audit'), false);
   });
 
   it('contains zero database seeding helpers or default concert/promo seed datasets in production source', () => {

@@ -11,6 +11,7 @@ import type { AdminMember, AdminRole, AdminSession } from '../../types';
 interface AdminTeamProps {
   admins: AdminMember[];
   sessions: AdminSession[];
+  currentAdminName: string;
   currentAdminEmail: string;
   onNotify: (msg: string) => void;
 }
@@ -18,6 +19,7 @@ interface AdminTeamProps {
 export const AdminTeam: React.FC<AdminTeamProps> = ({
   admins,
   sessions,
+  currentAdminName,
   currentAdminEmail,
   onNotify,
 }) => {
@@ -48,7 +50,10 @@ export const AdminTeam: React.FC<AdminTeamProps> = ({
     }
     setBusy(true);
     try {
-      await adminAddMember(cleanName, emailCheck.normalized, role, currentAdminEmail);
+      await adminAddMember(cleanName, emailCheck.normalized, role, currentAdminEmail, {
+        name: currentAdminName,
+        role: 'Super Admin',
+      });
       setName('');
       setEmail('');
       onNotify(
@@ -83,7 +88,11 @@ export const AdminTeam: React.FC<AdminTeamProps> = ({
     }
     setBusyMemberId(member.id);
     try {
-      await adminRemoveMember(member.id);
+      await adminRemoveMember(
+        member.id,
+        { name: currentAdminName, role: 'Super Admin' },
+        { name: member.name, email: member.email, role: member.role },
+      );
       setConfirmRemoveId(null);
       onNotify(
         isAr

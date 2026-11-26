@@ -24,7 +24,7 @@ import {
   adminUndoPayment,
 } from '../../services/firestoreService';
 import { formatFriendlyFirebaseError } from '../../firebase';
-import type { Booking } from '../../types';
+import type { AdminRole, Booking } from '../../types';
 import {
   formatCheckInProgress,
   getBookingCheckedInCount,
@@ -55,6 +55,7 @@ import {
 interface AdminCheckinProps {
   bookings: Booking[];
   adminName: string;
+  adminRole: AdminRole;
   isVerifiedStaff: boolean;
   canConfirmPayments: boolean;
   canUndoPayments: boolean;
@@ -67,12 +68,14 @@ type RosterFilter = 'all' | 'unpaid' | 'pending' | 'checked' | 'offline';
 export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   bookings,
   adminName,
+  adminRole,
   isVerifiedStaff,
   canConfirmPayments,
   canUndoPayments,
   canDeleteBookings,
   onNotify,
 }) => {
+  const actor = useMemo(() => ({ name: adminName, role: adminRole }), [adminName, adminRole]);
   const { lang, isAr, t } = useLanguage();
   const [manualCode, setManualCode] = useState('');
   const [scanResult, setScanResult] = useState<GateScanVerdict | null>(null);
@@ -162,7 +165,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
 
     verifyingRef.current = true;
     try {
-      const scanRes = await adminScanCheckIn(found, adminName, method);
+      const scanRes = await adminScanCheckIn(found, adminName, method, actor);
       playGateTone('success', soundEnabled);
       const authoritativeVerdict = buildGateScanSuccessVerdict(found, scanRes.checkedInCount, {
         lang,
@@ -441,7 +444,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     if (!canConfirmPayments || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
-      await adminConfirmPayment(b, adminName, 'Desk Confirm');
+      await adminConfirmPayment(b, adminName, 'Desk Confirm', actor);
       playGateTone('success', soundEnabled);
       const total = Math.max(1, Math.floor(b.quantity || 1));
       const scanned = getBookingCheckedInCount(b);
@@ -481,7 +484,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     const hadCheckIns = getBookingCheckedInCount(b) > 0;
     setBusyCode(b.bookingCode);
     try {
-      const reverted = await adminUndoPayment(b);
+      const reverted = await adminUndoPayment(b, actor);
       setConfirmUndoPayCode(null);
       if (!reverted) {
         onNotify(
@@ -517,7 +520,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     if (!canConfirmPayments || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
-      const scanRes = await adminConfirmAndCheckIn(b, adminName, 'Gate Pay + Entry');
+      const scanRes = await adminConfirmAndCheckIn(b, adminName, 'Gate Pay + Entry', actor);
       playGateTone('success', soundEnabled);
       setScanResult(
         buildGateScanSuccessVerdict(b, scanRes.checkedInCount, {
@@ -545,7 +548,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     setBusyCode(b.bookingCode);
     try {
       if (direction === 'admit') {
-        const scanRes = await adminScanCheckIn(b, adminName, 'Roster Check-In');
+        const scanRes = await adminScanCheckIn(b, adminName, 'Roster Check-In', actor);
         playGateTone('success', soundEnabled);
         setScanResult((prev) =>
           prev?.booking?.bookingCode === b.bookingCode
@@ -563,7 +566,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
             : `Checked in ${b.bookingCode}${counterSuffix}.`,
         );
       } else {
-        const undoRes = await adminDecrementCheckIn(b, adminName, 'Roster Undo');
+        const undoRes = await adminDecrementCheckIn(b, adminName, 'Roster Undo', actor);
         const counterSuffix =
           undoRes.quantity > 1 ? ` ${formatCheckInProgress(undoRes.checkedInCount, undoRes.quantity)}` : '';
         setScanResult((prev) =>
@@ -626,7 +629,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     if (!canDeleteBookings || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
-      await adminDeleteBooking(b);
+      await adminDeleteBooking(b, actor);
       setConfirmDeleteCode(null);
       setScanResult((prev) => (prev?.booking?.bookingCode === b.bookingCode ? null : prev));
       onNotify(isAr ? `تم حذف الحجز ${b.bookingCode}.` : `Deleted booking ${b.bookingCode}.`);

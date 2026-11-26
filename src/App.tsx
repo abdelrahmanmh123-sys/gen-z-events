@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { Heart, Search, Shield, SlidersHorizontal } from 'lucide-react';
 import {
   AuthProfileModal,
@@ -39,6 +39,7 @@ import {
 import type {
   AdminMember,
   AdminSession,
+  AuditLogEntry,
   Booking,
   Concert,
   PaymentConfig,
@@ -47,6 +48,11 @@ import type {
   UserProfile,
   WaitlistEntry,
 } from './types';
+import {
+  AUDIT_LOG_MAX_ENTRIES,
+  AUDIT_LOG_PAGE_SIZE,
+  sortAuditLogsNewestFirst,
+} from './utils/auditLog';
 import {
   DEFAULT_PAYMENT_CONFIG,
   emailToDocId,
@@ -83,6 +89,9 @@ export default function App() {
   const [adminWaitlist, setAdminWaitlist] = useState<WaitlistEntry[]>([]);
   const [adminMembers, setAdminMembers] = useState<AdminMember[]>([]);
   const [adminSessions, setAdminSessions] = useState<AdminSession[]>([]);
+  const [adminAuditLogs, setAdminAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLogLimit, setAuditLogLimit] = useState(AUDIT_LOG_PAGE_SIZE);
+  const [auditLogLoadError, setAuditLogLoadError] = useState(false);
 
   // Storefront UI State
   const [guestFavorites, setGuestFavorites] = useState<string[]>([]);
@@ -349,6 +358,9 @@ export default function App() {
       setAdminWaitlist([]);
       setAdminMembers([]);
       setAdminSessions([]);
+      setAdminAuditLogs([]);
+      setAuditLogLoadError(false);
+      setAuditLogLimit(AUDIT_LOG_PAGE_SIZE);
       return;
     }
 
@@ -425,6 +437,37 @@ export default function App() {
       void removeAdminSession(sid);
     };
   }, [adminMember, user?.uid, user?.email, user?.emailVerified, adminPortalOpen]);
+
+  // 5b. Super Admin Live Staff Audit Log Listener (separate effect so Load More does not restart sessions)
+  const isSuperAdminRoleActive = Boolean(
+    adminMember?.role === 'Super Admin' && user?.emailVerified && adminPortalOpen,
+  );
+  useEffect(() => {
+    if (!isSuperAdminRoleActive) {
+      setAdminAuditLogs([]);
+      setAuditLogLoadError(false);
+      return;
+    }
+
+    const auditQuery = query(
+      collection(db, 'auditLogs'),
+      orderBy('createdAt', 'desc'),
+      limit(auditLogLimit),
+    );
+    const unsubAuditLogs = onSnapshot(
+      auditQuery,
+      (snap) => {
+        setAuditLogLoadError(false);
+        setAdminAuditLogs(sortAuditLogsNewestFirst(snap.docs.map((d) => d.data() as AuditLogEntry)));
+      },
+      (err) => {
+        setAuditLogLoadError(true);
+        logFirestoreError(err, OperationType.LIST, 'auditLogs');
+      },
+    );
+
+    return () => unsubAuditLogs();
+  }, [isSuperAdminRoleActive, auditLogLimit]);
 
   // Keyboard shortcut: Ctrl/Cmd + Shift + A for Staff Portal
   useEffect(() => {
@@ -556,6 +599,14 @@ export default function App() {
             waitlist={adminWaitlist}
             admins={adminMembers}
             sessions={adminSessions}
+            auditLogs={adminAuditLogs}
+            auditLogLoadError={auditLogLoadError}
+            canLoadMoreAuditLogs={
+              adminAuditLogs.length >= auditLogLimit && auditLogLimit < AUDIT_LOG_MAX_ENTRIES
+            }
+            onLoadMoreAuditLogs={() =>
+              setAuditLogLimit((prev) => Math.min(AUDIT_LOG_MAX_ENTRIES, prev + AUDIT_LOG_PAGE_SIZE))
+            }
             adminName={displayName || adminMember.name}
             adminEmail={user.email || adminMember.email}
             adminRole={adminMember.role}
