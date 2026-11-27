@@ -1,18 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
-  CheckCircle2,
   Download,
   FileSpreadsheet,
   Plus,
-  RotateCcw,
-  Search,
-  Store,
-  Trash2,
   Upload,
-  X,
 } from 'lucide-react';
-import { TICKET_TIERS } from '../../data/defaults';
 import { formatFriendlyFirebaseError } from '../../firebase';
 import {
   adminBulkImportOfflineBookings,
@@ -28,9 +21,7 @@ import {
   formatCheckInProgress,
   generateBookingCode,
   getBookingCheckedInCount,
-  getTierColorHex,
   getTierUnitPrice,
-  hexToRgba,
   MAX_OFFLINE_QTY_PER_ROW,
   normalizeOfflineMobile,
   OFFLINE_USER_ID,
@@ -51,6 +42,9 @@ import {
   localizeKnownMessage,
 } from '../../i18n/translations';
 import { GoogleFormSyncPanel } from './GoogleFormSyncPanel';
+import { OfflineExcelPreviewPanel } from './OfflineExcelPreviewPanel';
+import { OfflineManualSaleForm } from './OfflineManualSaleForm';
+import { OfflineSalesLedger } from './OfflineSalesLedger';
 
 interface AdminOfflineTicketsProps {
   concerts: Concert[];
@@ -583,613 +577,85 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
 
       {/* Excel Import Preview & Confirmation Panel */}
       {rawImportFile && parsedImport && importConcert && (
-        <div className="bg-[#101218] border border-white/20 rounded-xl p-5 space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-                <h3 className="font-display font-bold text-base text-white">
-                  {t.excelPreviewTitle} · <span dir="ltr">{rawImportFile.fileName}</span>
-                </h3>
-              </div>
-              <p className="text-xs text-slate-400">
-                {t.worksheetLabel} &quot;{rawImportFile.sheetName}&quot; · {t.reviewParsedHint}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setRawImportFile(null)}
-              aria-label={t.cancel}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06]"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-lg bg-[#08090C] border border-white/10">
-            <div>
-              <label htmlFor="imp-concert" className="block text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5">
-                {t.assignImportedConcert}
-              </label>
-              <select
-                id="imp-concert"
-                value={importConcert.id}
-                onChange={(e) => setImportConcertId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[#101218] border border-white/15 text-xs text-white focus:outline-none focus:border-white/50"
-              >
-                {concerts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title} ({c.seatsLeft.toLocaleString()} {t.seatsLeftWord})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-end">
-              <label className="inline-flex items-center gap-2.5 text-xs text-slate-200 cursor-pointer py-2">
-                <input
-                  type="checkbox"
-                  checked={deductSeatsOnImport}
-                  onChange={(e) => setDeductSeatsOnImport(e.target.checked)}
-                  className="w-4 h-4 rounded border-white/25 bg-[#101218] accent-white"
-                />
-                <span>
-                  {t.deductImportedPrefix} ({parsedImport.paidTickets.toLocaleString()}){' '}
-                  {t.deductImportedSuffix}
-                </span>
-              </label>
-            </div>
-          </div>
-
-          {/* Summary Badges */}
-          <div className="flex flex-wrap items-center gap-4 text-xs">
-            <span className="inline-flex items-center gap-1.5 text-emerald-300 font-semibold">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              {parsedImport.validBookings.length} {t.validRowsWord} ·{' '}
-              {parsedImport.totalTickets.toLocaleString()} {t.ticketsLower}
-              {canViewRevenueAnalytics && (
-                <>
-                  {' '}
-                  ·{' '}
-                  <span className="font-modern-price font-bold">
-                    {formatCurrencyEgp(parsedImport.totalRevenueEgp, lang)}
-                  </span>
-                </>
-              )}
-            </span>
-            {parsedImport.errors.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 text-rose-300 font-semibold">
-                <AlertCircle className="w-3.5 h-3.5" />
-                {parsedImport.errors.length} {t.skippedRowsWord}
-              </span>
-            )}
-          </div>
-
-          {parsedImport.errors.length > 0 && (
-            <div className="p-3 rounded-lg border border-rose-500/35 bg-rose-500/10 space-y-1 max-h-32 overflow-y-auto">
-              {parsedImport.errors.slice(0, 20).map((err) => (
-                <p key={`${err.rowNumber}-${err.reason}`} className="text-[11px] text-rose-200">
-                  <span className="font-mono-num font-bold">
-                    {t.rowWord} {err.rowNumber}:
-                  </span>{' '}
-                  {err.reason}
-                </p>
-              ))}
-              {parsedImport.errors.length > 20 && (
-                <p className="text-[11px] text-rose-300">
-                  + {parsedImport.errors.length - 20} {t.moreSkippedRows}
-                </p>
-              )}
-            </div>
-          )}
-
-          {parsedImport.validBookings.length > 0 && (
-            <div className="border border-white/10 rounded-lg overflow-hidden">
-              <div className="overflow-x-auto max-h-60">
-                <table className="w-full text-start text-xs">
-                  <thead className="bg-[#0B0D12] text-slate-400 uppercase tracking-wider text-[10px] sticky top-0">
-                    <tr>
-                      <th className="px-3 py-2.5 text-start">{t.colCode}</th>
-                      <th className="px-3 py-2.5 text-start">{t.colBuyer}</th>
-                      <th className="px-3 py-2.5 text-start">{t.colCategory}</th>
-                      <th className="px-3 py-2.5 text-start">{t.colQty}</th>
-                      {canViewRevenueAnalytics && (
-                        <th className="px-3 py-2.5 text-start">{t.colTotal}</th>
-                      )}
-                      <th className="px-3 py-2.5 text-start">{t.colOutletRef}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/8">
-                    {parsedImport.validBookings.slice(0, 50).map((b) => {
-                      const tierHex = getTierColorHex(importConcert, b.tier);
-                      return (
-                        <tr key={b.bookingCode}>
-                          <td className="px-3 py-2 font-mono-num font-semibold text-white" dir="ltr">
-                            {b.bookingCode}
-                          </td>
-                          <td className="px-3 py-2">
-                            <span className="text-white font-medium">{b.customerName}</span>
-                            <span className="block text-[11px] font-mono-num text-slate-400" dir="ltr">
-                              {b.customerMobile}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: tierHex }}>
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: tierHex }} />
-                              {getTierCopy(b.tier, lang).name}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 font-mono-num text-white">{b.quantity}</td>
-                          {canViewRevenueAnalytics && (
-                            <td className="px-3 py-2 font-modern-price font-semibold text-white">
-                              {formatCurrencyEgp(b.totalEgp, lang)}
-                            </td>
-                          )}
-                          <td className="px-3 py-2 text-slate-300">{b.transferRef}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {parsedImport.validBookings.length > 50 && (
-                <div className="px-3 py-2 bg-[#0B0D12] border-t border-white/8 text-[11px] text-slate-400">
-                  {t.showingFirst50Prefix} {parsedImport.validBookings.length} {t.showingFirst50Suffix}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center justify-end gap-2.5 pt-1">
-            <button
-              type="button"
-              onClick={() => setRawImportFile(null)}
-              className="px-4 py-2 rounded-lg border border-white/12 text-xs font-medium text-slate-300 hover:text-white"
-            >
-              {t.cancel}
-            </button>
-            <button
-              type="button"
-              disabled={importBusy || parsedImport.validBookings.length === 0}
-              onClick={() => void handleConfirmExcelImport()}
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-50 text-xs font-semibold text-[#08090C] transition-colors"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              {importBusy
-                ? t.importingFirestore
-                : `${t.confirmAndImport} ${parsedImport.validBookings.length} ${
-                    parsedImport.validBookings.length === 1 ? t.recordWord : t.recordsPlural
-                  }`}
-            </button>
-          </div>
-        </div>
+        <OfflineExcelPreviewPanel
+          fileName={rawImportFile.fileName}
+          sheetName={rawImportFile.sheetName}
+          concerts={concerts}
+          importConcert={importConcert}
+          parsedImport={parsedImport}
+          deductSeatsOnImport={deductSeatsOnImport}
+          importBusy={importBusy}
+          canViewRevenueAnalytics={canViewRevenueAnalytics}
+          onSelectConcertId={setImportConcertId}
+          onToggleDeductSeats={setDeductSeatsOnImport}
+          onConfirmImport={() => void handleConfirmExcelImport()}
+          onClose={() => setRawImportFile(null)}
+        />
       )}
 
       {/* Manual Single Offline Sale Form */}
       {showManualForm && activeConcert && (
-        <form
-          onSubmit={handleManualSubmit}
-          className="bg-[#101218] border border-white/12 rounded-xl p-5 space-y-4"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Store className="w-4 h-4 text-white" />
-              <h3 className="font-display font-bold text-base text-white">{t.logSingleOfflineTitle}</h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowManualForm(false)}
-              aria-label={t.close}
-              className="p-1 text-slate-400 hover:text-white"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label htmlFor="off-concert" className="block text-xs font-medium text-slate-300 mb-1">
-                {t.colConcert}
-              </label>
-              <select
-                id="off-concert"
-                value={activeConcert.id}
-                onChange={(e) => setSelectedConcertId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white"
-              >
-                {concerts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="off-tier" className="block text-xs font-medium text-slate-300 mb-1">
-                {t.ticketCategoryLabel}
-              </label>
-              <select
-                id="off-tier"
-                value={manualTier}
-                onChange={(e) => setManualTier(e.target.value as TierId)}
-                className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white"
-              >
-                {TICKET_TIERS.map((tier) => (
-                  <option key={tier.id} value={tier.id}>
-                    {getTierCopy(tier.id, lang).name} (
-                    {formatCurrencyEgp(getTierUnitPrice(activeConcert, tier.id), lang)})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label htmlFor="off-qty" className="block text-xs font-medium text-slate-300 mb-1">
-                  {t.colQty}
-                </label>
-                <input
-                  id="off-qty"
-                  type="number"
-                  min={1}
-                  max={MAX_OFFLINE_QTY_PER_ROW}
-                  required
-                  value={manualQty}
-                  onChange={(e) => setManualQty(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white font-mono-num"
-                />
-              </div>
-              <div>
-                <label htmlFor="off-amount" className="block text-xs font-medium text-slate-300 mb-1">
-                  {t.totalEgpAuto} ({t.autoPrefix}:{' '}
-                  <span className="font-modern-price font-semibold text-white">
-                    {manualExpectedTotal.toLocaleString()}
-                  </span>
-                  )
-                </label>
-                <input
-                  id="off-amount"
-                  type="number"
-                  min={0}
-                  max={50000000}
-                  value={manualAmount}
-                  onChange={(e) => setManualAmount(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white font-modern-price"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div>
-              <label htmlFor="off-name" className="block text-xs font-medium text-slate-300 mb-1">
-                {t.buyerFullName}
-              </label>
-              <input
-                id="off-name"
-                type="text"
-                required
-                maxLength={100}
-                value={manualName}
-                onChange={(e) => setManualName(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white"
-              />
-            </div>
-            <div>
-              <label htmlFor="off-mobile" className="block text-xs font-medium text-slate-300 mb-1">
-                {t.mobileNumber}
-              </label>
-              <input
-                id="off-mobile"
-                type="tel"
-                dir="ltr"
-                required
-                maxLength={30}
-                value={manualMobile}
-                onChange={(e) => setManualMobile(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white font-mono-num"
-              />
-            </div>
-            <div>
-              <label htmlFor="off-email" className="block text-xs font-medium text-slate-300 mb-1">
-                {t.emailOptional}
-              </label>
-              <input
-                id="off-email"
-                type="email"
-                dir="ltr"
-                maxLength={120}
-                value={manualEmail}
-                onChange={(e) => setManualEmail(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white"
-              />
-            </div>
-            <div>
-              <label htmlFor="off-outlet" className="block text-xs font-medium text-slate-300 mb-1">
-                {t.outletSellerReceipt}
-              </label>
-              <input
-                id="off-outlet"
-                type="text"
-                maxLength={80}
-                value={manualOutlet}
-                onChange={(e) => setManualOutlet(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            <div className="flex flex-wrap items-center gap-5 text-xs text-slate-300">
-              <label className="inline-flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={manualDeductSeats}
-                  onChange={(e) => setManualDeductSeats(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-white"
-                />
-                {t.deductFromSeats}
-              </label>
-              <label className="inline-flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={manualCheckedIn}
-                  onChange={(e) => setManualCheckedIn(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-white"
-                />
-                {t.markAlreadyCheckedIn}
-              </label>
-            </div>
-            <button
-              type="submit"
-              disabled={manualBusy}
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-white hover:bg-neutral-200 disabled:opacity-50 text-xs font-semibold text-[#08090C] transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              {manualBusy ? t.saving : t.saveOfflineSale}
-            </button>
-          </div>
-        </form>
+        <OfflineManualSaleForm
+          concerts={concerts}
+          activeConcert={activeConcert}
+          manualTier={manualTier}
+          manualQty={manualQty}
+          manualAmount={manualAmount}
+          manualExpectedTotal={manualExpectedTotal}
+          manualName={manualName}
+          manualMobile={manualMobile}
+          manualEmail={manualEmail}
+          manualOutlet={manualOutlet}
+          manualDeductSeats={manualDeductSeats}
+          manualCheckedIn={manualCheckedIn}
+          manualBusy={manualBusy}
+          onSelectConcertId={setSelectedConcertId}
+          onTierChange={setManualTier}
+          onQtyChange={setManualQty}
+          onAmountChange={setManualAmount}
+          onNameChange={setManualName}
+          onMobileChange={setManualMobile}
+          onEmailChange={setManualEmail}
+          onOutletChange={setManualOutlet}
+          onDeductSeatsChange={setManualDeductSeats}
+          onCheckedInChange={setManualCheckedIn}
+          onSubmit={(e) => void handleManualSubmit(e)}
+          onClose={() => setShowManualForm(false)}
+        />
       )}
 
       {/* Offline Sales Data Table */}
-      <div className="bg-[#101218] border border-white/10 rounded-xl overflow-hidden">
-        <div className="p-4 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-500 absolute start-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              aria-label={t.searchOfflinePlaceholder}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t.searchOfflinePlaceholder}
-              className="w-full ps-9 pe-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white focus:outline-none focus:border-white/50"
-            />
-          </div>
-
-          <select
-            aria-label={t.allConcerts}
-            value={concertFilter}
-            onChange={(e) => setConcertFilter(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white focus:outline-none focus:border-white/50"
-          >
-            <option value="all">
-              {t.allConcerts} ({offlineBookings.length})
-            </option>
-            {concerts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-start text-xs">
-            <thead className="bg-[#0B0D12] text-slate-400 uppercase tracking-wider text-[10px]">
-              <tr>
-                <th className="px-4 py-3 text-start">{t.colCode}</th>
-                <th className="px-4 py-3 text-start">{t.colBuyer}</th>
-                <th className="px-4 py-3 text-start">{t.colConcertCategory}</th>
-                <th className="px-4 py-3 text-start">{t.colOutletSource}</th>
-                <th className="px-4 py-3 text-end">{t.colActions}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/8">
-              {filteredOffline.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center space-y-2">
-                    <p className="text-slate-300 font-medium">
-                      {offlineBookings.length === 0 ? t.noOfflineRecorded : t.noOfflineFilterMatch}
-                    </p>
-                    {offlineBookings.length === 0 && (
-                      <p className="text-[11px] text-slate-500">{t.offlineEmptyGuide}</p>
-                    )}
-                  </td>
-                </tr>
-              ) : (
-                filteredOffline.map((b) => {
-                  const show = concertMap.get(b.concertId);
-                  const tierHex = getTierColorHex(show, b.tier);
-                  return (
-                    <tr key={b.bookingCode} className="hover:bg-white/[0.02]">
-                      <td className="px-4 py-3 font-mono-num font-bold text-white whitespace-nowrap" dir="ltr">
-                        {b.bookingCode}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-white">{b.customerName}</p>
-                        <p className="text-[11px] font-mono-num text-slate-400" dir="ltr">
-                          {b.customerMobile}
-                          {b.customerEmail ? ` · ${b.customerEmail}` : ''}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-slate-200">{b.concertTitle}</p>
-                        <div className="flex items-center gap-2 mt-0.5 text-[11px]">
-                          <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold border"
-                            style={{
-                              color: tierHex,
-                              borderColor: hexToRgba(tierHex, 0.4),
-                              backgroundColor: hexToRgba(tierHex, 0.1),
-                            }}
-                          >
-                            {b.quantity}x {getTierCopy(b.tier, lang).name}
-                          </span>
-                          {canViewRevenueAnalytics && (
-                            <span className="font-modern-price font-semibold text-slate-200">
-                              {formatCurrencyEgp(b.totalEgp, lang)}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-slate-200">{b.transferRef}</p>
-                        <p className="text-[11px] text-slate-500">
-                          {b.approvalMethod || t.filterOffline} · {b.approvedBy || 'Staff'}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-end whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1.5">
-                          {b.paymentStatus !== 'Paid' ? (
-                            canConfirmPayments ? (
-                              <button
-                                type="button"
-                                disabled={busyCode === b.bookingCode}
-                                onClick={() => void handleConfirmOfflinePay(b)}
-                                className="px-2.5 py-1.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 font-semibold"
-                              >
-                                {t.confirmPay}
-                              </button>
-                            ) : (
-                              <span className="px-2.5 py-1.5 rounded-md border border-amber-400/25 bg-amber-400/5 text-[11px] font-medium text-amber-200/80">
-                                {t.awaitingSuperAdmin}
-                              </span>
-                            )
-                          ) : (() => {
-                            const total = Math.max(1, Math.floor(b.quantity || 1));
-                            const scanned = getBookingCheckedInCount(b);
-                            const isFull = scanned >= total;
-                            const isPartial = scanned > 0 && !isFull;
-                            const counter = total > 1 ? ` ${formatCheckInProgress(scanned, total)}` : '';
-                            return (
-                              <>
-                                <button
-                                  type="button"
-                                  disabled={busyCode === b.bookingCode}
-                                  onClick={() =>
-                                    void handleRosterCheckInAction(b, isFull ? 'undo' : 'admit')
-                                  }
-                                  className={`px-2.5 py-1.5 rounded-md font-semibold border ${
-                                    isFull
-                                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                                      : isPartial
-                                        ? 'bg-cyan-500/15 border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/25'
-                                        : 'bg-white/[0.06] border-white/15 text-white hover:bg-white/[0.12]'
-                                  }`}
-                                >
-                                  {isFull ? t.statusCheckedIn : t.checkInBtn}
-                                  {counter && (
-                                    <span className="font-mono-num" dir="ltr">
-                                      {counter}
-                                    </span>
-                                  )}
-                                </button>
-                                {isPartial && (
-                                  <button
-                                    type="button"
-                                    disabled={busyCode === b.bookingCode}
-                                    onClick={() => void handleRosterCheckInAction(b, 'undo')}
-                                    aria-label={`${t.undoOneScanAria} (${b.bookingCode})`}
-                                    title={t.undoOneScanAria}
-                                    className="px-2 py-1.5 rounded-md border border-white/12 bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 hover:text-white font-mono-num text-[11px]"
-                                    dir="ltr"
-                                  >
-                                    -1
-                                  </button>
-                                )}
-                                {canUndoPayments &&
-                                  (confirmUndoPayCode === b.bookingCode ? (
-                                    <span className="inline-flex items-center gap-1">
-                                      <button
-                                        type="button"
-                                        disabled={busyCode === b.bookingCode}
-                                        onClick={() => void handleUndoOfflinePay(b)}
-                                        className="px-2 py-1.5 rounded-md bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-[#1A1202] font-semibold"
-                                      >
-                                        {t.undoPayConfirm}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setConfirmUndoPayCode(null)}
-                                        aria-label={t.cancelUndoPayAria}
-                                        className="p-1.5 rounded-md text-slate-400 hover:text-white"
-                                      >
-                                        <X className="w-3.5 h-3.5" />
-                                      </button>
-                                    </span>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      disabled={busyCode === b.bookingCode}
-                                      onClick={() => {
-                                        setConfirmDeleteCode(null);
-                                        setConfirmUndoPayCode(b.bookingCode);
-                                      }}
-                                      aria-label={`${t.undoPayAria} (${b.bookingCode})`}
-                                      title={t.undoPayAria}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-amber-400/35 bg-amber-400/10 hover:bg-amber-400/20 disabled:opacity-60 text-amber-200 font-semibold transition-colors"
-                                    >
-                                      <RotateCcw className="w-3 h-3" />
-                                      {t.undoPay}
-                                    </button>
-                                  ))}
-                              </>
-                            );
-                          })()}
-
-                          {canDeleteBookings &&
-                            (confirmDeleteCode === b.bookingCode ? (
-                              <span className="inline-flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  disabled={busyCode === b.bookingCode}
-                                  onClick={() => void handleDeleteOffline(b)}
-                                  className="px-2 py-1.5 rounded-md bg-rose-600 text-white font-semibold"
-                                >
-                                  {t.sureBtn}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmDeleteCode(null)}
-                                  aria-label={t.cancelDeleteAria}
-                                  className="p-1.5 rounded-md text-slate-400 hover:text-white"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setConfirmUndoPayCode(null);
-                                  setConfirmDeleteCode(b.bookingCode);
-                                }}
-                                aria-label={isAr ? `حذف ${b.bookingCode}` : `Delete ${b.bookingCode}`}
-                                className="p-1.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            ))}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <OfflineSalesLedger
+        concerts={concerts}
+        concertMap={concertMap}
+        offlineBookingsCount={offlineBookings.length}
+        filteredOffline={filteredOffline}
+        searchQuery={searchQuery}
+        concertFilter={concertFilter}
+        canConfirmPayments={canConfirmPayments}
+        canUndoPayments={canUndoPayments}
+        canDeleteBookings={canDeleteBookings}
+        canViewRevenueAnalytics={canViewRevenueAnalytics}
+        busyCode={busyCode}
+        confirmDeleteCode={confirmDeleteCode}
+        confirmUndoPayCode={confirmUndoPayCode}
+        onSearchChange={setSearchQuery}
+        onConcertFilterChange={setConcertFilter}
+        onConfirmPay={(b) => void handleConfirmOfflinePay(b)}
+        onCheckInAction={(b, dir) => void handleRosterCheckInAction(b, dir)}
+        onRequestUndoPay={(code) => {
+          setConfirmDeleteCode(null);
+          setConfirmUndoPayCode(code);
+        }}
+        onCancelUndoPay={() => setConfirmUndoPayCode(null)}
+        onConfirmUndoPay={(b) => void handleUndoOfflinePay(b)}
+        onRequestDelete={(code) => {
+          setConfirmUndoPayCode(null);
+          setConfirmDeleteCode(code);
+        }}
+        onCancelDelete={() => setConfirmDeleteCode(null)}
+        onConfirmDelete={(b) => void handleDeleteOffline(b)}
+      />
     </div>
   );
 };

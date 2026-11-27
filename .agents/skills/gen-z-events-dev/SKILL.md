@@ -32,6 +32,7 @@ Check which files must move together for the area you are changing:
 
 ## 2. Deep Reference Files (Load On Demand)
 
+- Auto-generated exact file/symbol line map (read first!): [symbol-index.md](./references/symbol-index.md)
 - Module & export inventory: [architecture-map.md](./references/architecture-map.md)
 - Firestore schema, RBAC & security rules: [firestore-and-rbac.md](./references/firestore-and-rbac.md)
 - Browser compatibility, i18n/RTL & ticket pass geometry: [browser-compat-and-i18n.md](./references/browser-compat-and-i18n.md)

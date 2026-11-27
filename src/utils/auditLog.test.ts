@@ -61,7 +61,7 @@ describe('Staff Action Audit Log — Pure Logic & Rules Parity Suite', () => {
     const ids = new Set<string>();
     for (let i = 0; i < 100; i++) {
       const id = generateAuditLogId(1764100000000 + i);
-      assert.match(id, /^[a-zA-Z0-9_\-]+$/);
+      assert.match(id, /^[a-zA-Z0-9_-]+$/);
       assert.ok(id.length >= 8 && id.length <= 64, `Invalid audit ID length: ${id}`);
       ids.add(id);
     }

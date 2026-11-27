@@ -4,16 +4,10 @@ import {
   AlertTriangle,
   Camera,
   CameraOff,
-  CheckCircle2,
   ImageUp,
   RotateCcw,
-  Search,
-  ShieldAlert,
-  Trash2,
   Volume2,
   VolumeX,
-  X,
-  XCircle,
 } from 'lucide-react';
 import {
   adminConfirmAndCheckIn,
@@ -45,12 +39,9 @@ import {
 } from '../../utils/gateScanLogic';
 import { playGateTone } from '../../utils/passExport';
 import { useLanguage } from '../../i18n/LanguageContext';
-import {
-  formatCurrencyEgp,
-  getPaymentMethodLabel,
-  getTierCopy,
-  localizeKnownMessage,
-} from '../../i18n/translations';
+import { localizeKnownMessage } from '../../i18n/translations';
+import { AdminCheckinVerdictCard } from './AdminCheckinVerdictCard';
+import { AdminCheckinRoster, type RosterFilter } from './AdminCheckinRoster';
 
 interface AdminCheckinProps {
   bookings: Booking[];
@@ -63,8 +54,6 @@ interface AdminCheckinProps {
   canViewRevenueAnalytics: boolean;
   onNotify: (msg: string) => void;
 }
-
-type RosterFilter = 'all' | 'unpaid' | 'pending' | 'checked' | 'offline';
 
 export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   bookings,
@@ -217,7 +206,9 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
     }
   };
 
-  verifyCodeRef.current = verifyCode;
+  useEffect(() => {
+    verifyCodeRef.current = verifyCode;
+  });
 
   const startCamera = async () => {
     if (!isVerifiedStaff) return;
@@ -845,239 +836,23 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
 
         {/* Right Panel: Prominent VALID / INVALID Verdict + Manual & PNG Verification */}
         <div className="lg:col-span-5 flex flex-col gap-4">
-          {/* Unmistakable High-Contrast Scan Verdict Banner */}
           {scanResult && (
-            <div
-              role="status"
-              aria-live="assertive"
-              className={`rounded-xl border-2 p-5 space-y-3.5 ${
-                scanResult.tone === 'success'
-                  ? 'border-emerald-400 bg-emerald-950/70 text-emerald-50'
-                  : scanResult.tone === 'warn'
-                    ? 'border-amber-400 bg-amber-950/65 text-amber-50'
-                    : 'border-rose-500 bg-rose-950/75 text-rose-50'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-                      scanResult.tone === 'success'
-                        ? 'bg-emerald-500/25 text-emerald-300'
-                        : scanResult.tone === 'warn'
-                          ? 'bg-amber-400/25 text-amber-300'
-                          : 'bg-rose-500/25 text-rose-300'
-                    }`}
-                  >
-                    {scanResult.tone === 'success' ? (
-                      <CheckCircle2 className="w-7 h-7" />
-                    ) : scanResult.tone === 'warn' ? (
-                      <AlertTriangle className="w-7 h-7" />
-                    ) : scanResult.status === 'invalid_wrong_qr' ? (
-                      <ShieldAlert className="w-7 h-7" />
-                    ) : (
-                      <XCircle className="w-7 h-7" />
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <span
-                      className={`inline-block text-[11px] font-mono-num font-extrabold uppercase tracking-wider rtl:tracking-normal px-2.5 py-0.5 rounded ${
-                        scanResult.tone === 'success'
-                          ? 'bg-emerald-500 text-[#04140D]'
-                          : scanResult.tone === 'warn'
-                            ? 'bg-amber-400 text-[#1A1202]'
-                            : 'bg-rose-500 text-white'
-                      }`}
-                    >
-                      {scanResult.verdictBadge}
-                    </span>
-                    <h3 className="font-display font-bold text-base sm:text-lg leading-snug text-white">
-                      {scanResult.headline}
-                    </h3>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={resetScanForNext}
-                  aria-label={t.scanNextBtn}
-                  className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 shrink-0"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Multi-Ticket Scan Counter Strip (e.g. (1/5), (2/5), ..., (5/5)) */}
-              {scanResult.booking &&
-                (scanResult.totalQuantity ?? Math.max(1, Math.floor(scanResult.booking.quantity || 1))) > 1 && (() => {
-                  const totalQty =
-                    scanResult.totalQuantity ?? Math.max(1, Math.floor(scanResult.booking.quantity || 1));
-                  const scannedQty =
-                    scanResult.admittedCount ?? getBookingCheckedInCount(scanResult.booking);
-                  const remainingQty = Math.max(0, totalQty - scannedQty);
-                  const pct = Math.min(100, Math.round((scannedQty / totalQty) * 100));
-                  return (
-                    <div
-                      data-testid="multi-scan-counter"
-                      className="rounded-lg bg-black/35 border border-white/15 p-3 space-y-2"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <span className="text-[11px] uppercase tracking-wider text-white/65 block">
-                            {t.entriesProgressLabel}
-                          </span>
-                          <span className="text-xs font-medium text-white/90">
-                            {remainingQty > 0
-                              ? `${remainingQty} ${t.entriesRemainingWord}`
-                              : t.allEntriesAdmitted}
-                          </span>
-                        </div>
-                        <span
-                          dir="ltr"
-                          className={`font-mono-num text-xl sm:text-2xl font-black px-3 py-1 rounded-lg border ${
-                            scanResult.tone === 'success'
-                              ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200'
-                              : scanResult.tone === 'warn'
-                                ? 'bg-amber-400/20 border-amber-300/50 text-amber-200'
-                                : 'bg-rose-500/25 border-rose-400/50 text-rose-200'
-                          }`}
-                        >
-                          {formatCheckInProgress(scannedQty, totalQty)}
-                        </span>
-                      </div>
-                      <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ${
-                            scanResult.tone === 'success'
-                              ? 'bg-emerald-400'
-                              : scanResult.tone === 'warn'
-                                ? 'bg-amber-400'
-                                : 'bg-rose-400'
-                          }`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })()}
-
-              {/* Detailed Reason Explanation */}
-              <p className="text-xs sm:text-sm leading-relaxed text-white/90">
-                {scanResult.reason}
-              </p>
-
-              {/* Ticket / Scanned Code Metadata Box */}
-              {scanResult.booking ? (
-                <div className="grid grid-cols-2 gap-2.5 pt-2.5 border-t border-white/15 text-xs">
-                  <div>
-                    <span className="text-white/60 block text-[11px]">{t.colCode}</span>
-                    <span className="font-mono-num font-bold text-white" dir="ltr">
-                      {scanResult.booking.bookingCode}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/60 block text-[11px]">{t.colConcertTier}</span>
-                    <span className="font-semibold text-white">
-                      {scanResult.booking.quantity}x {getTierCopy(scanResult.booking.tier, lang).name}
-                    </span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-white/60 block text-[11px]">{t.colConcert}</span>
-                    <span className="font-medium text-white">{scanResult.booking.concertTitle}</span>
-                  </div>
-                </div>
-              ) : (
-                scanResult.scannedCode && (
-                  <div className="pt-2.5 border-t border-white/15 text-xs">
-                    <span className="text-white/60 block text-[11px]">{t.scannedCodeLabel}</span>
-                    <span className="font-mono-num text-white break-all" dir="ltr">
-                      {scanResult.scannedCode}
-                    </span>
-                  </div>
-                )
-              )}
-
-              {/* Action Row */}
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                {canConfirmPayments &&
-                  scanResult.booking &&
-                  scanResult.booking.paymentStatus === 'Pending' && (
-                    <button
-                      type="button"
-                      disabled={busyCode === scanResult.booking.bookingCode}
-                      onClick={() => void handleQuickApprove(scanResult.booking!)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-[#04140D] transition-colors"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      {t.confirmPayAndApprove}
-                    </button>
-                  )}
-                {scanResult.isValid &&
-                  scanResult.booking &&
-                  (scanResult.remainingEntries ?? 0) > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => void verifyCode(scanResult.booking!.bookingCode, 'Gate Next Entry')}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-[#04140D] transition-colors"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      {t.admitNextBtn}{' '}
-                      <span className="font-mono-num" dir="ltr">
-                        {formatCheckInProgress(
-                          (scanResult.admittedCount ?? 0) + 1,
-                          scanResult.totalQuantity ?? scanResult.booking.quantity,
-                        )}
-                      </span>
-                    </button>
-                  )}
-                {canUndoPayments &&
-                  scanResult.booking &&
-                  scanResult.booking.paymentStatus === 'Paid' &&
-                  (confirmUndoPayCode === scanResult.booking.bookingCode ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        disabled={busyCode === scanResult.booking.bookingCode}
-                        onClick={() => void handleUndoPay(scanResult.booking!)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-xs font-bold text-[#1A1202] transition-colors"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        {t.undoPayConfirm}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmUndoPayCode(null)}
-                        aria-label={t.cancelUndoPayAria}
-                        className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={busyCode === scanResult.booking.bookingCode}
-                      onClick={() => {
-                        setConfirmDeleteCode(null);
-                        setConfirmUndoPayCode(scanResult.booking!.bookingCode);
-                      }}
-                      aria-label={`${t.undoPayAria} (${scanResult.booking.bookingCode})`}
-                      title={t.undoPayAria}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-amber-400/50 bg-amber-400/15 hover:bg-amber-400/25 disabled:opacity-60 text-xs font-semibold text-amber-200 transition-colors"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      {t.undoPay}
-                    </button>
-                  ))}
-                <button
-                  type="button"
-                  onClick={resetScanForNext}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-semibold text-white transition-colors"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  {t.scanNextBtn}
-                </button>
-              </div>
-            </div>
+            <AdminCheckinVerdictCard
+              scanResult={scanResult}
+              canConfirmPayments={canConfirmPayments}
+              canUndoPayments={canUndoPayments}
+              busyCode={busyCode}
+              confirmUndoPayCode={confirmUndoPayCode}
+              onQuickApprove={(b) => void handleQuickApprove(b)}
+              onAdmitNext={(code) => void verifyCode(code, 'Gate Next Entry')}
+              onRequestUndoPay={(code) => {
+                setConfirmDeleteCode(null);
+                setConfirmUndoPayCode(code);
+              }}
+              onCancelUndoPay={() => setConfirmUndoPayCode(null)}
+              onConfirmUndoPay={(b) => void handleUndoPay(b)}
+              onResetScan={resetScanForNext}
+            />
           )}
 
           {/* Manual Code & PNG Upload Card */}
@@ -1123,245 +898,34 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
       </div>
 
       {/* Live Attendee Roster */}
-      <div className="bg-[#101218] border border-white/10 rounded-xl overflow-hidden">
-        <div className="p-4 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-500 absolute start-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              aria-label={t.searchRosterAria}
-              value={rosterSearch}
-              onChange={(e) => setRosterSearch(e.target.value)}
-              placeholder={t.searchRosterPlaceholder}
-              className="w-full ps-9 pe-3 py-2 rounded-lg bg-[#08090C] border border-white/12 text-xs text-white focus:outline-none focus:border-white/50"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(
-              [
-                ['all', t.filterAll],
-                ['unpaid', t.filterUnpaid],
-                ['pending', t.filterPaidReady],
-                ['checked', t.filterCheckedIn],
-                ['offline', t.filterOffline],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setRosterFilter(id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
-                  rosterFilter === id
-                    ? 'bg-white text-[#08090C] font-semibold'
-                    : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-start text-xs">
-            <thead className="bg-[#0B0D12] text-slate-400 uppercase tracking-wider text-[10px]">
-              <tr>
-                <th className="px-4 py-3 text-start">{t.colCode}</th>
-                <th className="px-4 py-3 text-start">{t.colAttendee}</th>
-                <th className="px-4 py-3 text-start">{t.colConcertTier}</th>
-                <th className="px-4 py-3 text-start">{t.colPaymentRef}</th>
-                <th className="px-4 py-3 text-end">{t.colActions}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/8">
-              {filteredRoster.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-slate-500">
-                    {t.noBookingsMatch}
-                  </td>
-                </tr>
-              ) : (
-                filteredRoster.map((b) => (
-                  <tr key={b.bookingCode} className="hover:bg-white/[0.02]">
-                    <td className="px-4 py-3 font-mono-num font-bold text-white whitespace-nowrap" dir="ltr">
-                      {b.bookingCode}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-white">{b.customerName}</p>
-                      <p className="text-[11px] font-mono-num text-slate-400" dir="ltr">
-                        {b.customerMobile}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-slate-200">{b.concertTitle}</p>
-                      <p className="text-[11px] text-slate-400">
-                        {b.quantity}x {getTierCopy(b.tier, lang).name}
-                        {canViewRevenueAnalytics && (
-                          <>
-                            {' '}
-                            ·{' '}
-                            <span className="font-modern-price font-semibold text-slate-200">
-                              {formatCurrencyEgp(b.totalEgp, lang)}
-                            </span>
-                          </>
-                        )}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block font-mono-num text-[10px] font-bold uppercase ${
-                          b.paymentStatus === 'Paid' ? 'text-emerald-400' : 'text-amber-300'
-                        }`}
-                      >
-                        {b.paymentStatus === 'Paid' ? t.statusPaid : t.statusPending}
-                      </span>
-                      <p className="text-[11px] font-mono-num text-slate-400">
-                        {getPaymentMethodLabel(b.paymentMethod, lang)} ·{' '}
-                        <span dir="ltr">{b.transferRef}</span>
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-end whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5">
-                        {b.paymentStatus !== 'Paid' ? (
-                          canConfirmPayments ? (
-                            <button
-                              type="button"
-                              disabled={busyCode === b.bookingCode}
-                              onClick={() => void handleConfirmPay(b)}
-                              className="px-2.5 py-1.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 font-semibold"
-                            >
-                              {t.confirmPay}
-                            </button>
-                          ) : (
-                            <span className="px-2.5 py-1.5 rounded-md border border-amber-400/25 bg-amber-400/5 text-[11px] font-medium text-amber-200/80">
-                              {t.awaitingSuperAdmin}
-                            </span>
-                          )
-                        ) : (() => {
-                          const total = Math.max(1, Math.floor(b.quantity || 1));
-                          const scanned = getBookingCheckedInCount(b);
-                          const isFull = scanned >= total;
-                          const isPartial = scanned > 0 && !isFull;
-                          const counter = total > 1 ? ` ${formatCheckInProgress(scanned, total)}` : '';
-                          return (
-                            <>
-                              <button
-                                type="button"
-                                disabled={busyCode === b.bookingCode}
-                                onClick={() =>
-                                  void handleRosterAdvanceOrUndo(b, isFull ? 'undo' : 'admit')
-                                }
-                                className={`px-2.5 py-1.5 rounded-md font-semibold border ${
-                                  isFull
-                                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                                    : isPartial
-                                      ? 'bg-cyan-500/15 border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/25'
-                                      : 'bg-white/[0.06] border-white/15 text-white hover:bg-white/[0.12]'
-                                }`}
-                              >
-                                {isFull ? t.statusCheckedIn : t.checkInBtn}
-                                {counter && (
-                                  <span className="font-mono-num" dir="ltr">
-                                    {counter}
-                                  </span>
-                                )}
-                              </button>
-                              {isPartial && (
-                                <button
-                                  type="button"
-                                  disabled={busyCode === b.bookingCode}
-                                  onClick={() => void handleRosterAdvanceOrUndo(b, 'undo')}
-                                  aria-label={`${t.undoOneScanAria} (${b.bookingCode})`}
-                                  title={t.undoOneScanAria}
-                                  className="px-2 py-1.5 rounded-md border border-white/12 bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 hover:text-white font-mono-num text-[11px]"
-                                  dir="ltr"
-                                >
-                                  -1
-                                </button>
-                              )}
-                              {canUndoPayments &&
-                                (confirmUndoPayCode === b.bookingCode ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      disabled={busyCode === b.bookingCode}
-                                      onClick={() => void handleUndoPay(b)}
-                                      className="px-2 py-1.5 rounded-md bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-[#1A1202] font-semibold"
-                                    >
-                                      {t.undoPayConfirm}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setConfirmUndoPayCode(null)}
-                                      aria-label={t.cancelUndoPayAria}
-                                      className="p-1.5 rounded-md text-slate-400 hover:text-white"
-                                    >
-                                      <X className="w-3.5 h-3.5" />
-                                    </button>
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    disabled={busyCode === b.bookingCode}
-                                    onClick={() => {
-                                      setConfirmDeleteCode(null);
-                                      setConfirmUndoPayCode(b.bookingCode);
-                                    }}
-                                    aria-label={`${t.undoPayAria} (${b.bookingCode})`}
-                                    title={t.undoPayAria}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-amber-400/35 bg-amber-400/10 hover:bg-amber-400/20 disabled:opacity-60 text-amber-200 font-semibold transition-colors"
-                                  >
-                                    <RotateCcw className="w-3 h-3" />
-                                    {t.undoPay}
-                                  </button>
-                                ))}
-                            </>
-                          );
-                        })()}
-
-                        {canDeleteBookings &&
-                          (confirmDeleteCode === b.bookingCode ? (
-                            <span className="inline-flex items-center gap-1">
-                              <button
-                                type="button"
-                                disabled={busyCode === b.bookingCode}
-                                onClick={() => void handleDelete(b)}
-                                className="px-2 py-1.5 rounded-md bg-rose-600 text-white font-semibold"
-                              >
-                                {t.sureBtn}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteCode(null)}
-                                aria-label={t.cancelDeleteAria}
-                                className="p-1.5 rounded-md text-slate-400 hover:text-white"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setConfirmUndoPayCode(null);
-                                setConfirmDeleteCode(b.bookingCode);
-                              }}
-                              aria-label={isAr ? `حذف ${b.bookingCode}` : `Delete ${b.bookingCode}`}
-                              className="p-1.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <AdminCheckinRoster
+        filteredRoster={filteredRoster}
+        rosterSearch={rosterSearch}
+        rosterFilter={rosterFilter}
+        canConfirmPayments={canConfirmPayments}
+        canUndoPayments={canUndoPayments}
+        canDeleteBookings={canDeleteBookings}
+        canViewRevenueAnalytics={canViewRevenueAnalytics}
+        busyCode={busyCode}
+        confirmDeleteCode={confirmDeleteCode}
+        confirmUndoPayCode={confirmUndoPayCode}
+        onRosterSearchChange={setRosterSearch}
+        onRosterFilterChange={setRosterFilter}
+        onConfirmPay={(b) => void handleConfirmPay(b)}
+        onAdvanceOrUndo={(b, dir) => void handleRosterAdvanceOrUndo(b, dir)}
+        onRequestUndoPay={(code) => {
+          setConfirmDeleteCode(null);
+          setConfirmUndoPayCode(code);
+        }}
+        onCancelUndoPay={() => setConfirmUndoPayCode(null)}
+        onConfirmUndoPay={(b) => void handleUndoPay(b)}
+        onRequestDelete={(code) => {
+          setConfirmUndoPayCode(null);
+          setConfirmDeleteCode(code);
+        }}
+        onCancelDelete={() => setConfirmDeleteCode(null)}
+        onConfirmDelete={(b) => void handleDelete(b)}
+      />
     </div>
   );
 };

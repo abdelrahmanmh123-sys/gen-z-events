@@ -197,7 +197,7 @@ export function parseGoogleFormSchemaPayload(payload: unknown): GoogleFormSchema
 function normalizeLabel(text: string): string {
   return text
     .toLowerCase()
-    .replace(/["'“”«»()\[\]—–\-_.:/\\]+/g, ' ')
+    .replace(/["'“”«»()[\]—–\-_.:/\\]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -638,7 +638,7 @@ export function mapGoogleFormResponsesToBookings(
     let discountEgp = 0;
 
     if (rawAmount) {
-      const asciiAmt = toAsciiDigits(rawAmount).replace(/[^0-9.\-]/g, '');
+      const asciiAmt = toAsciiDigits(rawAmount).replace(/[^0-9.-]/g, '');
       const parsedAmt = Number(asciiAmt);
       if (
         asciiAmt === '' ||

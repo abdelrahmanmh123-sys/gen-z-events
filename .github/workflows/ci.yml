@@ -1,0 +1,104 @@
+name: CI Verification & Security Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: TypeScript, Lint, Unit & Invariant Tests, Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint Firestore rules and src/
+        run: |
+          npx eslint firestore.rules
+          npx oxlint -c .oxlintrc.json --quiet src
+
+      - name: Run all unit & codebase invariant tests
+        run: npx tsx --test firestore.rules.test.ts $(find src -name '*.test.ts' | sort)
+
+      - name: Production Vite build & artifact check
+        run: |
+          npm run build
+          test -f dist/index.html
+          test -f dist/_redirects
+
+      - name: Upload built dist for browser smoke job
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-bundle
+          path: dist/
+          retention-days: 1
+
+  firestore-rules-emulator:
+    name: Live Firestore Rules Emulator Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java 21 (for Firestore Emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Execute live Firestore Rules unit tests
+        run: |
+          npx firebase-tools@latest emulators:exec --only firestore --project gen-z-events \
+            "npx tsx --test tests/firestore.emulator.test.ts"
+
+  browser-smoke:
+    name: Playwright Browser Smoke (EN + AR RTL + Mobile 375px)
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Download built dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-bundle
+          path: dist/
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run EN / AR RTL / Mobile 375px smoke test
+        run: node scripts/smoke-browser.mjs
