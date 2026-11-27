@@ -60,6 +60,7 @@ interface AdminCheckinProps {
   canConfirmPayments: boolean;
   canUndoPayments: boolean;
   canDeleteBookings: boolean;
+  canViewRevenueAnalytics: boolean;
   onNotify: (msg: string) => void;
 }
 
@@ -73,6 +74,7 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
   canConfirmPayments,
   canUndoPayments,
   canDeleteBookings,
+  canViewRevenueAnalytics,
   onNotify,
 }) => {
   const actor = useMemo(() => ({ name: adminName, role: adminRole }), [adminName, adminRole]);
@@ -391,10 +393,29 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
           });
         }
 
-        // 3. Fallback: isolate right-hand ticket stub where our 3:1 pass QR sits (at 2x scale for small screenshots)
+        // 3. Fallback: isolate the official 3:1 ticket Digital QR Seal zone (x=0.684..0.810, y=0.214..0.654) with padding
         if (!decoded?.data && img.width > 120 && img.height > 80) {
-          const sx = Math.floor(img.width * 0.7);
-          const sy = Math.floor(img.height * 0.35);
+          const sx = Math.floor(img.width * 0.63);
+          const sy = Math.floor(img.height * 0.16);
+          const sw = Math.min(img.width - sx, Math.ceil(img.width * 0.23));
+          const sh = Math.min(img.height - sy, Math.ceil(img.height * 0.56));
+          if (sw > 16 && sh > 16) {
+            const scale = sw < 600 ? Math.min(3, Math.ceil(600 / sw)) : 1;
+            canvas.width = sw * scale;
+            canvas.height = sh * scale;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+            const sealData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            decoded = jsQR(sealData.data, sealData.width, sealData.height, {
+              inversionAttempts: 'attemptBoth',
+            });
+          }
+        }
+
+        // 4. Fallback: isolate lower-right ticket stub area for legacy or cropped screenshots
+        if (!decoded?.data && img.width > 120 && img.height > 80) {
+          const sx = Math.floor(img.width * 0.65);
+          const sy = Math.floor(img.height * 0.3);
           const sw = img.width - sx;
           const sh = img.height - sy;
           const scale = sw < 400 ? 2 : 1;
@@ -1175,8 +1196,16 @@ export const AdminCheckin: React.FC<AdminCheckinProps> = ({
                     <td className="px-4 py-3">
                       <p className="text-slate-200">{b.concertTitle}</p>
                       <p className="text-[11px] text-slate-400">
-                        {b.quantity}x {getTierCopy(b.tier, lang).name} ·{' '}
-                        <span className="font-modern-price font-semibold text-slate-200">{formatCurrencyEgp(b.totalEgp, lang)}</span>
+                        {b.quantity}x {getTierCopy(b.tier, lang).name}
+                        {canViewRevenueAnalytics && (
+                          <>
+                            {' '}
+                            ·{' '}
+                            <span className="font-modern-price font-semibold text-slate-200">
+                              {formatCurrencyEgp(b.totalEgp, lang)}
+                            </span>
+                          </>
+                        )}
                       </p>
                     </td>
                     <td className="px-4 py-3">

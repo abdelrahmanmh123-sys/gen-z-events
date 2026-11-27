@@ -227,3 +227,25 @@ test('getAuditActionLabel returns non-empty EN and AR labels for every audit act
   assert.equal(getAuditActionLabel('payment_undone', 'en'), 'Payment Undone');
   assert.equal(getAuditActionLabel('payment_undone', 'ar'), 'تراجع عن الدفع');
 });
+
+test('localizeKnownMessage translates Firestore transaction/network errors and Excel upload errors to Arabic', () => {
+  const messages = [
+    'This booking no longer exists or was already deleted.',
+    'Booking code already exists. Please try again.',
+    'This ticket has not been confirmed as paid yet.',
+    'This ticket is already fully checked in.',
+    'Unable to reach the server. Check your internet connection and try again.',
+    'Request timed out. Please check your connection and try again.',
+    'This record was just updated on another device. Please try again.',
+    'Spreadsheet file is too large (max 10 MB).',
+    'Please upload an Excel (.xlsx / .xls) or CSV (.csv) spreadsheet.',
+    'The uploaded spreadsheet has no worksheets.',
+    'No data rows found in the first worksheet.',
+    'Please split spreadsheets larger than 2,000 rows into smaller batches.',
+  ];
+  for (const enMsg of messages) {
+    const arMsg = localizeKnownMessage(enMsg, 'ar');
+    assert.notEqual(arMsg, enMsg, `Missing Arabic localization for: ${enMsg}`);
+    assert.ok(/[\u0600-\u06FF]/.test(arMsg), `Expected Arabic script for: ${enMsg}`);
+  }
+});

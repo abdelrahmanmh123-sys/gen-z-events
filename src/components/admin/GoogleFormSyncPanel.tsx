@@ -259,6 +259,7 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
   }, [autoRefresh, accessToken, activeFormId, performSync]);
 
   const handleConnectGoogleForms = async () => {
+    if (connecting) return;
     setConnecting(true);
     setErrorMsg('');
     try {
@@ -309,7 +310,7 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
   }, [formSchema, mapping, activeConcert, rawResponses, adminName, existingCodes, paymentStatus, lang]);
 
   const handleConfirmImport = async () => {
-    if (!syncResult || !activeConcert || syncResult.newBookings.length === 0) return;
+    if (importing || !syncResult || !activeConcert || syncResult.newBookings.length === 0) return;
     setImporting(true);
     setErrorMsg('');
     try {
@@ -798,7 +799,9 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
                         <th className="px-3 py-2.5 text-start">{isAr ? 'العميل / الواتساب' : 'Buyer & WhatsApp'}</th>
                         <th className="px-3 py-2.5 text-start">{isAr ? 'الفئة' : 'Tier'}</th>
                         <th className="px-3 py-2.5 text-start">{isAr ? 'مركز البيع' : 'Sales Outlet'}</th>
-                        <th className="px-3 py-2.5 text-start">{isAr ? 'السعر' : 'Total'}</th>
+                        {canViewRevenueAnalytics && (
+                          <th className="px-3 py-2.5 text-start">{isAr ? 'السعر' : 'Total'}</th>
+                        )}
                         <th className="px-3 py-2.5 text-start">{isAr ? 'وقت التسجيل' : 'Submitted'}</th>
                       </tr>
                     </thead>
@@ -834,9 +837,11 @@ export const GoogleFormSyncPanel: React.FC<GoogleFormSyncPanelProps> = ({
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-slate-200">{b.transferRef}</td>
-                              <td className="px-3 py-2 font-modern-price font-semibold text-white whitespace-nowrap">
-                                {formatCurrencyEgp(b.totalEgp, lang)}
-                              </td>
+                              {canViewRevenueAnalytics && (
+                                <td className="px-3 py-2 font-modern-price font-semibold text-white whitespace-nowrap">
+                                  {formatCurrencyEgp(b.totalEgp, lang)}
+                                </td>
+                              )}
                               <td className="px-3 py-2 text-[11px] text-slate-400 whitespace-nowrap">
                                 {formatTimestamp(row.submittedAt)}
                               </td>

@@ -28,6 +28,7 @@ import {
   getTierColorHex,
   getTierUnitPrice,
   isSafeImageUrl,
+  normalizeScheduleDateTime,
   parseBoundedIntInput,
   suggestTierPrices,
   validateAndBuildConcertEditPayload,
@@ -187,7 +188,7 @@ export const AdminManage: React.FC<AdminManageProps> = ({
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingConcert) return;
+    if (!editingConcert || busyId) return;
     setEditError('');
 
     const validation = validateAndBuildConcertEditPayload(editingConcert, {
@@ -236,6 +237,7 @@ export const AdminManage: React.FC<AdminManageProps> = ({
   };
 
   const handleDeleteConcert = async (c: Concert) => {
+    if (busyId) return;
     setBusyId(c.id);
     try {
       await adminDeleteConcert(c.id, { name: adminName, role: 'Super Admin' }, c.title);
@@ -283,10 +285,10 @@ export const AdminManage: React.FC<AdminManageProps> = ({
     }
   };
 
-  const liveSchedulePreview =
-    /^\d{4}-\d{2}-\d{2}$/.test(editIsoDate) && /^\d{2}:\d{2}$/.test(editIsoTime)
-      ? formatDateTimeDisplay(editIsoDate, editIsoTime)
-      : null;
+  const normalizedSchedule = normalizeScheduleDateTime(editIsoDate, editIsoTime);
+  const liveSchedulePreview = normalizedSchedule.valid
+    ? formatDateTimeDisplay(normalizedSchedule.isoDate, normalizedSchedule.isoTime)
+    : null;
 
   const originalBookedCount = editingConcert
     ? Math.max(0, editingConcert.totalSeats - editingConcert.seatsLeft)

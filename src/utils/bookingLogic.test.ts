@@ -23,6 +23,7 @@ import {
   fitPosterDimensions,
   formatCheckInProgress,
   formatDateTimeDisplay,
+  formatFriendlyFirebaseError,
   generateBookingCode,
   getBookingCheckedInCount,
   getBookingRemainingEntries,
@@ -56,6 +57,7 @@ import {
   sanitizeId,
   sanitizeSpreadsheetCell,
   sortByCreatedAtDesc,
+  sortByUpdatedAtDesc,
   suggestTierPrices,
   togglePromoTier,
   validateAndBuildConcertEditPayload,
@@ -70,6 +72,7 @@ import {
   validateWaitlistInput,
 } from './bookingLogic.ts';
 import type { AdminSession, Booking, Concert, Promo } from '../types.ts';
+import { buildOfflineExportRows } from './excelOffline.ts';
 
 const TEST_PROMOS: Promo[] = [
   { code: 'GENZ15', type: 'percent', value: 15, tiers: [], label: 'GENZ15 (15% Off)', active: true },
@@ -1403,6 +1406,141 @@ describe('Gen Z Events — Exhaustive Business, Auth & Security Logic Suite', ()
     assert.equal(trioMiss.valid, false);
     assert.equal(trioMiss.message, 'TRIO20 applies only to Silver, Gold & VIP passes.');
     assert.equal(evaluatePromo('TRIO20', 'Gold', 400, individualPromos).valid, true);
+  });
+
+  it('unwraps JSON Firestore error payloads without leaking authInfo UID/email and maps transaction errors', () => {
+    const wrappedNotFound = new Error(
+      JSON.stringify({
+        error: 'Booking no longer exists.',
+        operationType: 'update',
+        path: 'bookings/GZ-ABC123',
+        authInfo: { userId: 'secret-uid-123', email: 'private@admin.com' },
+      }),
+    );
+    const notFoundMsg = formatFriendlyFirebaseError(wrappedNotFound);
+    assert.equal(notFoundMsg, 'This booking no longer exists or was already deleted.');
+    assert.ok(!notFoundMsg.includes('secret-uid-123'));
+    assert.ok(!notFoundMsg.includes('private@admin.com'));
+
+    const wrappedUnknown = new Error(
+      JSON.stringify({
+        error: 'Custom server error message',
+        operationType: 'write',
+        path: 'bookings/GZ-111111',
+        authInfo: { userId: 'uid-must-not-leak', email: 'leak@test.com' },
+      }),
+    );
+    const unknownMsg = formatFriendlyFirebaseError(wrappedUnknown);
+    assert.equal(unknownMsg, 'Custom server error message');
+    assert.ok(!unknownMsg.includes('uid-must-not-leak'));
+
+    assert.equal(
+      formatFriendlyFirebaseError(new Error('Booking code already exists. Please try again.')),
+      'Booking code already exists. Please try again.',
+    );
+    assert.equal(
+      formatFriendlyFirebaseError(new Error('PAYMENT_NOT_PAID')),
+      'This ticket has not been confirmed as paid yet.',
+    );
+    assert.equal(
+      formatFriendlyFirebaseError(new Error('ALREADY_CHECKED_IN|2|2|8:05 PM|Gate Staff')),
+      'This ticket is already fully checked in.',
+    );
+    assert.equal(
+      formatFriendlyFirebaseError(
+        new Error('Failed to get document because the client is offline.'),
+      ),
+      'Unable to reach the server. Check your internet connection and try again.',
+    );
+    assert.equal(
+      formatFriendlyFirebaseError(new Error('Firestore deadline-exceeded')),
+      'Request timed out. Please check your connection and try again.',
+    );
+    assert.equal(
+      formatFriendlyFirebaseError(new Error('Transaction aborted due to contention')),
+      'This record was just updated on another device. Please try again.',
+    );
+    assert.equal(
+      formatFriendlyFirebaseError(new Error('resource-exhausted: quota exceeded')),
+      'Daily Firestore free-tier quota exceeded. Quota resets tomorrow.',
+    );
+  });
+
+  it('normalizes 12-digit 2010... and 13-digit 20010... Egyptian mobile formats (including Arabic digits)', () => {
+    assert.equal(normalizeEgyptianMobile('201099887766'), '01099887766');
+    assert.equal(normalizeEgyptianMobile('201123456789'), '01123456789');
+    assert.equal(normalizeEgyptianMobile('201555551234'), '01555551234');
+    assert.equal(normalizeEgyptianMobile('2001099887766'), '01099887766');
+    assert.equal(normalizeEgyptianMobile('٢٠١٠٩٩٨٨٧٧٦٦'), '01099887766');
+    assert.equal(validateEgyptianMobile('201099887766', true).valid, true);
+    assert.equal(validateEgyptianMobile('2001234567890', true).valid, true);
+  });
+
+  it('sorts recent approvals by updatedAt descending (with createdAt fallback)', () => {
+    const olderCreatedButJustApproved = {
+      id: 'older-approved',
+      createdAt: { seconds: 1000 },
+      updatedAt: { seconds: 9000 },
+    };
+    const newerCreatedOlderUpdate = {
+      id: 'newer-created',
+      createdAt: { seconds: 5000 },
+      updatedAt: { seconds: 6000 },
+    };
+    const createdOnly = {
+      id: 'created-only',
+      createdAt: { seconds: 7000 },
+    };
+    const sorted = sortByUpdatedAtDesc([
+      newerCreatedOlderUpdate,
+      createdOnly,
+      olderCreatedButJustApproved,
+    ]);
+    assert.deepEqual(
+      sorted.map((x) => x.id),
+      ['older-approved', 'created-only', 'newer-created'],
+    );
+  });
+
+  it('strips financial EGP columns from offline Excel export rows when includeFinancials is false (Gate Staff RBAC)', () => {
+    const sample: Booking = {
+      bookingCode: 'GZ-OFF111',
+      userId: OFFLINE_USER_ID,
+      concertId: 'qena-01',
+      concertTitle: 'Upper Egypt Rising',
+      concertDate: 'Fri, Dec 4, 2026',
+      concertTime: '8:00 PM',
+      concertVenue: 'Qena Cultural Palace',
+      tier: 'VIP',
+      quantity: 2,
+      unitPrice: 450,
+      promoCode: '',
+      discountEgp: 0,
+      totalEgp: 900,
+      paymentMethod: 'Offline',
+      transferRef: 'Qena Booth',
+      paymentStatus: 'Paid',
+      checkedIn: false,
+      checkedInCount: 1,
+      checkedInAt: '7:45 PM',
+      approvedBy: 'Gate Lead',
+      approvalMethod: 'Offline Desk',
+      customerName: 'Omar Tarek',
+      customerMobile: '01012345678',
+      customerEmail: '',
+    };
+
+    const superRows = buildOfflineExportRows([sample], { includeFinancials: true });
+    assert.equal(superRows[0]['Unit Price EGP'], 450);
+    assert.equal(superRows[0]['Total EGP'], 900);
+    assert.equal(superRows[0]['Checked In'], '1/2');
+
+    const gateRows = buildOfflineExportRows([sample], { includeFinancials: false });
+    assert.equal('Unit Price EGP' in gateRows[0], false);
+    assert.equal('Total EGP' in gateRows[0], false);
+    assert.equal(gateRows[0]['Booking Code'], 'GZ-OFF111');
+    assert.equal(gateRows[0].Quantity, 2);
+    assert.equal(gateRows[0]['Checked In'], '1/2');
   });
 });
 

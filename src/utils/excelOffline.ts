@@ -89,29 +89,48 @@ export function downloadOfflineTemplateXlsx(concert?: Concert): void {
   XLSX.writeFile(wb, 'genz-events-offline-tickets-template.xlsx');
 }
 
-export function exportOfflineBookingsXlsx(bookings: Booking[], filename?: string): void {
-  const exportRows = bookings.map((b) => ({
-    'Booking Code': sanitizeSpreadsheetCell(b.bookingCode),
-    Concert: sanitizeSpreadsheetCell(b.concertTitle),
-    Date: sanitizeSpreadsheetCell(b.concertDate),
-    'Customer Name': sanitizeSpreadsheetCell(b.customerName),
-    Mobile: sanitizeSpreadsheetCell(b.customerMobile),
-    Email: sanitizeSpreadsheetCell(b.customerEmail || ''),
-    Tier: sanitizeSpreadsheetCell(b.tier),
-    Quantity: b.quantity,
-    'Unit Price EGP': b.unitPrice,
-    'Total EGP': b.totalEgp,
-    'Outlet / Ref': sanitizeSpreadsheetCell(b.transferRef),
-    Status: sanitizeSpreadsheetCell(b.paymentStatus),
-    'Checked In': (() => {
+export function buildOfflineExportRows(
+  bookings: Booking[],
+  opts?: { includeFinancials?: boolean },
+): Record<string, string | number>[] {
+  const includeFinancials = opts?.includeFinancials !== false;
+  return bookings.map((b) => {
+    const checkedInLabel = (() => {
       const total = Math.max(1, Math.floor(b.quantity || 1));
       const count = getBookingCheckedInCount(b);
       if (total > 1) return `${count}/${total}`;
       return count > 0 ? 'Yes' : 'No';
-    })(),
-    'Logged By': sanitizeSpreadsheetCell(b.approvedBy || ''),
-    Source: sanitizeSpreadsheetCell(b.approvalMethod || 'Offline'),
-  }));
+    })();
+    const row: Record<string, string | number> = {
+      'Booking Code': sanitizeSpreadsheetCell(b.bookingCode),
+      Concert: sanitizeSpreadsheetCell(b.concertTitle),
+      Date: sanitizeSpreadsheetCell(b.concertDate),
+      'Customer Name': sanitizeSpreadsheetCell(b.customerName),
+      Mobile: sanitizeSpreadsheetCell(b.customerMobile),
+      Email: sanitizeSpreadsheetCell(b.customerEmail || ''),
+      Tier: sanitizeSpreadsheetCell(b.tier),
+      Quantity: b.quantity,
+    };
+    if (includeFinancials) {
+      row['Unit Price EGP'] = b.unitPrice;
+      row['Total EGP'] = b.totalEgp;
+    }
+    row['Outlet / Ref'] = sanitizeSpreadsheetCell(b.transferRef);
+    row.Status = sanitizeSpreadsheetCell(b.paymentStatus);
+    row['Checked In'] = checkedInLabel;
+    row['Logged By'] = sanitizeSpreadsheetCell(b.approvedBy || '');
+    row.Source = sanitizeSpreadsheetCell(b.approvalMethod || 'Offline');
+    return row;
+  });
+}
+
+export function exportOfflineBookingsXlsx(
+  bookings: Booking[],
+  filename?: string,
+  opts?: { includeFinancials?: boolean },
+): void {
+  const includeFinancials = opts?.includeFinancials !== false;
+  const exportRows = buildOfflineExportRows(bookings, { includeFinancials });
 
   const ws = XLSX.utils.json_to_sheet(exportRows);
   ws['!cols'] = [
@@ -123,8 +142,7 @@ export function exportOfflineBookingsXlsx(bookings: Booking[], filename?: string
     { wch: 24 },
     { wch: 10 },
     { wch: 10 },
-    { wch: 14 },
-    { wch: 12 },
+    ...(includeFinancials ? [{ wch: 14 }, { wch: 12 }] : []),
     { wch: 24 },
     { wch: 10 },
     { wch: 12 },

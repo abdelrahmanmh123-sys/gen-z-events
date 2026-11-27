@@ -204,6 +204,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (authBusy) return;
     setAuthError('');
     setAuthInfo('');
     setVerifyFeedback(null);
@@ -310,6 +311,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
   };
 
   const handlePasswordReset = async () => {
+    if (authBusy) return;
     setAuthError('');
     setAuthInfo('');
     const emailCheck = validateEmailAddress(email, { allowDisposable: true });
@@ -331,6 +333,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
   };
 
   const handleGoogleSignIn = async () => {
+    if (authBusy) return;
     setAuthError('');
     setAuthInfo('');
     setAuthBusy(true);
@@ -347,7 +350,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
 
   const handleResendVerification = async () => {
     const activeUser = auth.currentUser;
-    if (!activeUser || resendCooldown > 0) return;
+    if (verifyBusy || !activeUser || resendCooldown > 0) return;
     setVerifyBusy(true);
     setVerifyFeedback(null);
     try {
@@ -368,6 +371,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
   };
 
   const handleCheckVerified = async () => {
+    if (verifyBusy) return;
     setVerifyBusy(true);
     setVerifyFeedback(null);
     try {
@@ -387,7 +391,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
 
   const handleCancelUnverifiedAccount = async () => {
     const activeUser = auth.currentUser;
-    if (!activeUser) return;
+    if (verifyBusy || !activeUser) return;
     setVerifyBusy(true);
     setVerifyFeedback(null);
     try {
@@ -421,7 +425,7 @@ export const AuthProfileModal: React.FC<AuthProfileModalProps> = ({
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     const activeUser = auth.currentUser;
-    if (!activeUser || !isVerifiedFanAccount(activeUser)) return;
+    if (profileBusy || !activeUser || !isVerifiedFanAccount(activeUser)) return;
     setProfileStatus(null);
 
     const check = validateProfileUpdateInput({

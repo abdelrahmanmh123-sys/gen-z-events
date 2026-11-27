@@ -7,6 +7,7 @@ import {
   Globe,
   History,
   QrCode,
+  Search,
   Settings2,
   Store,
   Tag,
@@ -38,6 +39,7 @@ import { AdminManage } from './AdminManage';
 import { AdminContentPromos } from './AdminContentPromos';
 import { AdminTeam } from './AdminTeam';
 import { AdminAuditLog } from './AdminAuditLog';
+import { AdminQuickSearchModal } from './AdminQuickSearchModal';
 
 interface AdminWorkspaceProps {
   concerts: Concert[];
@@ -79,6 +81,19 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
   const { lang, toggleLang, t } = useLanguage();
   const permissions = useMemo(() => getStaffPermissions(adminRole), [adminRole]);
   const [activeTab, setActiveTab] = useState<AdminTab>(() => permissions.defaultTab);
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false);
+
+  // Global Ctrl+K / Cmd+K shortcut to open Staff Quick Search from any tab
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setQuickSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Enforce strict RBAC tab clamping if staff role changes dynamically
   useEffect(() => {
@@ -182,6 +197,21 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setQuickSearchOpen(true)}
+            aria-label={t.quickSearchAria}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-white/15 bg-white/[0.05] hover:bg-white/[0.12] text-xs font-semibold text-white whitespace-nowrap transition-colors"
+          >
+            <Search className="w-3.5 h-3.5 text-neutral-300" />
+            <span className="hidden md:inline">{t.quickSearchBtn}</span>
+            <kbd
+              dir="ltr"
+              className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-[#08090C] border border-white/15 font-mono-num text-[10px] text-slate-400"
+            >
+              Ctrl K
+            </kbd>
+          </button>
           <button
             type="button"
             onClick={toggleLang}
@@ -288,6 +318,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
               canConfirmPayments={permissions.canConfirmPayments}
               canUndoPayments={permissions.canUndoPayments}
               canDeleteBookings={permissions.canDeleteBookings}
+              canViewRevenueAnalytics={permissions.canViewRevenueAnalytics}
               onNotify={onNotify}
             />
           )}
@@ -348,6 +379,21 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({
           )}
         </main>
       </div>
+
+      <AdminQuickSearchModal
+        open={quickSearchOpen}
+        onClose={() => setQuickSearchOpen(false)}
+        bookings={bookings}
+        concerts={concerts}
+        promos={promos}
+        waitlist={waitlist}
+        permissions={permissions}
+        adminName={adminName}
+        adminRole={adminRole}
+        navItems={navItems}
+        onNavigateTab={(tab) => setActiveTab(tab)}
+        onNotify={onNotify}
+      />
     </div>
   );
 };

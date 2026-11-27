@@ -619,7 +619,7 @@ export default function App() {
           <div
             role="status"
             aria-live="polite"
-            className="fixed bottom-5 end-5 z-[70] max-w-sm px-4 py-3 rounded-lg bg-[#171A23] border border-white/15 text-xs font-medium text-white shadow-2xl"
+            className="fixed bottom-5 end-5 z-[95] max-w-sm px-4 py-3 rounded-lg bg-[#171A23] border border-white/15 text-xs font-medium text-white shadow-2xl"
           >
             {toast}
           </div>
@@ -879,7 +879,7 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-5 end-5 z-[70] max-w-sm px-4 py-3 rounded-lg bg-[#171A23] border border-white/15 text-xs font-medium text-white shadow-2xl"
+          className="fixed bottom-5 end-5 z-[95] max-w-sm px-4 py-3 rounded-lg bg-[#171A23] border border-white/15 text-xs font-medium text-white shadow-2xl"
         >
           {toast}
         </div>

@@ -17,6 +17,7 @@ import {
   initializeFirestore,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
+export { formatFriendlyFirebaseError } from './utils/bookingLogic';
 
 const app = initializeApp(firebaseConfig);
 const FIRESTORE_DATABASE_ID =
@@ -140,48 +141,4 @@ export async function ensureFreshVerifiedToken(user: User | null | undefined): P
     await user.reload();
     await user.getIdToken(true);
   }
-}
-
-export function formatFriendlyFirebaseError(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  if (raw.includes('auth/operation-not-allowed')) {
-    return 'Email/Password sign-in is not enabled yet in Firebase Console. Enable Email/Password under Authentication -> Sign-in method, or use Continue with Google.';
-  }
-  if (raw.includes('auth/unauthorized-domain')) {
-    return 'This app domain must be added under Firebase Console -> Authentication -> Settings -> Authorized domains.';
-  }
-  if (raw.includes('auth/email-already-in-use')) {
-    return 'An account with this email already exists. Try signing in instead.';
-  }
-  if (raw.includes('auth/invalid-credential') || raw.includes('auth/wrong-password') || raw.includes('auth/user-not-found')) {
-    return 'Invalid email or password. Double-check your credentials and try again.';
-  }
-  if (raw.includes('auth/weak-password')) {
-    return 'Password must be at least 8 characters long and include both letters and numbers.';
-  }
-  if (raw.includes('auth/invalid-email')) {
-    return 'Please enter a valid email address.';
-  }
-  if (raw.includes('auth/popup-closed-by-user') || raw.includes('auth/cancelled-popup-request')) {
-    return 'Sign-in popup was closed before completing.';
-  }
-  if (raw.includes('auth/popup-blocked')) {
-    return 'Your browser blocked the sign-in popup. Please allow popups for this site or sign in with Email & Password.';
-  }
-  if (raw.includes('auth/network-request-failed')) {
-    return 'Network error while connecting to authentication service. Check your internet connection and try again.';
-  }
-  if (raw.includes('auth/user-disabled')) {
-    return 'This account has been disabled. Please contact Gen Z Events support.';
-  }
-  if (raw.includes('auth/too-many-requests')) {
-    return 'Too many attempts. Please wait a moment and try again.';
-  }
-  if (raw.includes('Quota exceeded')) {
-    return 'Daily Firestore free-tier quota exceeded. Quota resets tomorrow.';
-  }
-  if (raw.includes('Missing or insufficient permissions') || raw.includes('permission-denied')) {
-    return 'Permission denied. Make sure your account is signed in and verified.';
-  }
-  return raw.length > 180 ? `${raw.slice(0, 177)}...` : raw;
 }

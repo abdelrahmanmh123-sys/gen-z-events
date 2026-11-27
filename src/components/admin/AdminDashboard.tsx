@@ -16,6 +16,7 @@ import {
   formatCheckInProgress,
   getBookingCheckedInCount,
   getTierColorHex,
+  sortByUpdatedAtDesc,
 } from '../../utils/bookingLogic';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { formatCurrencyEgp, getTierCopy } from '../../i18n/translations';
@@ -66,18 +67,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const ticketsByConcert = useMemo(() => {
     if (!canViewRevenueAnalytics) return [];
     const paid = bookings.filter((b) => b.paymentStatus === 'Paid');
-    return concerts.map((c) => ({
-      name: c.title.length > 16 ? `${c.title.slice(0, 15)}…` : c.title,
-      sold: paid
-        .filter((b) => b.concertId === c.id)
-        .reduce((sum, b) => sum + b.quantity, 0),
-    }));
+    const seenLabels = new Map<string, number>();
+    return concerts.map((c) => {
+      const baseLabel = c.title.length > 16 ? `${c.title.slice(0, 15)}…` : c.title;
+      const count = (seenLabels.get(baseLabel) ?? 0) + 1;
+      seenLabels.set(baseLabel, count);
+      return {
+        name: count > 1 ? `${baseLabel} #${count}` : baseLabel,
+        sold: paid
+          .filter((b) => b.concertId === c.id)
+          .reduce((sum, b) => sum + b.quantity, 0),
+      };
+    });
   }, [concerts, bookings, canViewRevenueAnalytics]);
 
   const recentApprovals = useMemo(() => {
-    return bookings
-      .filter((b) => (b.paymentStatus === 'Paid' && Boolean(b.approvedBy)) || getBookingCheckedInCount(b) > 0)
-      .slice(0, 12);
+    const eligible = bookings.filter(
+      (b) => (b.paymentStatus === 'Paid' && Boolean(b.approvedBy)) || getBookingCheckedInCount(b) > 0,
+    );
+    return sortByUpdatedAtDesc(eligible).slice(0, 12);
   }, [bookings]);
 
   const totalTierRevenue = revenueByTier.reduce((s, item) => s + item.value, 0);

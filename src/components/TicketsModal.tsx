@@ -70,7 +70,14 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
   const [busyCode, setBusyCode] = useState<string | null>(null);
 
   const activeZoomBooking = zoomQrBooking
-    ? bookings.find((b) => b.bookingCode === zoomQrBooking.bookingCode && canDisplayBookingQr(b)) || null
+    ? (() => {
+        const live = bookings.find(
+          (b) => b.bookingCode === zoomQrBooking.bookingCode && canDisplayBookingQr(b),
+        );
+        if (!live) return null;
+        const show = concerts.find((c) => c.id === live.concertId);
+        return resolveBookingConcertDetails(live, show);
+      })()
     : null;
 
   const activePreviewPng = previewPng
@@ -222,6 +229,7 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
   };
 
   const handleCancelBooking = async (bookingCode: string) => {
+    if (busyCode === bookingCode) return;
     setBusyCode(bookingCode);
     try {
       await cancelPendingBooking(bookingCode);
@@ -478,9 +486,11 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
                         <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
                         {isPaid ? t.whatsappLabel : t.sendReceiptWhatsapp}
                       </a>
-                      <span className="text-[11px] leading-snug text-emerald-300/90">
-                        {t.whatsappPaymentScreenshotNote}
-                      </span>
+                      {!isPaid && (
+                        <span className="text-[11px] leading-snug text-emerald-300/90">
+                          {t.whatsappPaymentScreenshotNote}
+                        </span>
+                      )}
                     </div>
 
                     {!isPaid && getBookingCheckedInCount(b) === 0 && (

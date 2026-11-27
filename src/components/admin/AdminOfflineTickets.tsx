@@ -204,7 +204,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
     } catch (err) {
       onNotify(
         err instanceof Error
-          ? err.message
+          ? localizeKnownMessage(err.message, lang)
           : isAr
             ? 'تعذر قراءة ملف الإكسل.'
             : 'Failed to read spreadsheet file.',
@@ -213,7 +213,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
   };
 
   const handleConfirmExcelImport = async () => {
-    if (!parsedImport || !importConcert || parsedImport.validBookings.length === 0) return;
+    if (importBusy || !parsedImport || !importConcert || parsedImport.validBookings.length === 0) return;
     setImportBusy(true);
     try {
       const res = await adminBulkImportOfflineBookings(
@@ -354,7 +354,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
   };
 
   const handleRosterCheckInAction = async (b: Booking, direction: 'admit' | 'undo') => {
-    if (b.paymentStatus !== 'Paid') return;
+    if (b.paymentStatus !== 'Paid' || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
       if (direction === 'admit') {
@@ -377,14 +377,23 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
         );
       }
     } catch (err) {
-      onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
+      const rawMsg = err instanceof Error ? err.message : '';
+      if (rawMsg.startsWith('ALREADY_CHECKED_IN|')) {
+        onNotify(
+          isAr
+            ? `التذكرة ${b.bookingCode} تم استخدامها بالكامل بالفعل.`
+            : `Ticket ${b.bookingCode} is already fully checked in.`,
+        );
+      } else {
+        onNotify(localizeKnownMessage(formatFriendlyFirebaseError(err), lang));
+      }
     } finally {
       setBusyCode(null);
     }
   };
 
   const handleConfirmOfflinePay = async (b: Booking) => {
-    if (!canConfirmPayments) return;
+    if (!canConfirmPayments || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
       await adminConfirmPayment(b, adminName, 'Offline Desk Confirm', actor);
@@ -401,7 +410,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
   };
 
   const handleUndoOfflinePay = async (b: Booking) => {
-    if (!canUndoPayments) return;
+    if (!canUndoPayments || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
       const reverted = await adminUndoPayment(b, actor);
@@ -427,7 +436,7 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
   };
 
   const handleDeleteOffline = async (b: Booking) => {
-    if (!canDeleteBookings) return;
+    if (!canDeleteBookings || busyCode === b.bookingCode) return;
     setBusyCode(b.bookingCode);
     try {
       await adminDeleteBooking(b, actor);
@@ -503,7 +512,9 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
             <button
               type="button"
               onClick={() => {
-                exportOfflineBookingsXlsx(filteredOffline);
+                exportOfflineBookingsXlsx(filteredOffline, undefined, {
+                  includeFinancials: canViewRevenueAnalytics,
+                });
                 onNotify(
                   isAr
                     ? `تم تصدير ${filteredOffline.length} سجل أوفلاين إلى ملف إكسل (.xlsx).`
@@ -635,10 +646,16 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
             <span className="inline-flex items-center gap-1.5 text-emerald-300 font-semibold">
               <CheckCircle2 className="w-3.5 h-3.5" />
               {parsedImport.validBookings.length} {t.validRowsWord} ·{' '}
-              {parsedImport.totalTickets.toLocaleString()} {t.ticketsLower} ·{' '}
-              <span className="font-modern-price font-bold">
-                {formatCurrencyEgp(parsedImport.totalRevenueEgp, lang)}
-              </span>
+              {parsedImport.totalTickets.toLocaleString()} {t.ticketsLower}
+              {canViewRevenueAnalytics && (
+                <>
+                  {' '}
+                  ·{' '}
+                  <span className="font-modern-price font-bold">
+                    {formatCurrencyEgp(parsedImport.totalRevenueEgp, lang)}
+                  </span>
+                </>
+              )}
             </span>
             {parsedImport.errors.length > 0 && (
               <span className="inline-flex items-center gap-1.5 text-rose-300 font-semibold">
@@ -676,7 +693,9 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
                       <th className="px-3 py-2.5 text-start">{t.colBuyer}</th>
                       <th className="px-3 py-2.5 text-start">{t.colCategory}</th>
                       <th className="px-3 py-2.5 text-start">{t.colQty}</th>
-                      <th className="px-3 py-2.5 text-start">{t.colTotal}</th>
+                      {canViewRevenueAnalytics && (
+                        <th className="px-3 py-2.5 text-start">{t.colTotal}</th>
+                      )}
                       <th className="px-3 py-2.5 text-start">{t.colOutletRef}</th>
                     </tr>
                   </thead>
@@ -701,9 +720,11 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
                             </span>
                           </td>
                           <td className="px-3 py-2 font-mono-num text-white">{b.quantity}</td>
-                          <td className="px-3 py-2 font-modern-price font-semibold text-white">
-                            {formatCurrencyEgp(b.totalEgp, lang)}
-                          </td>
+                          {canViewRevenueAnalytics && (
+                            <td className="px-3 py-2 font-modern-price font-semibold text-white">
+                              {formatCurrencyEgp(b.totalEgp, lang)}
+                            </td>
+                          )}
                           <td className="px-3 py-2 text-slate-300">{b.transferRef}</td>
                         </tr>
                       );
@@ -1014,9 +1035,11 @@ export const AdminOfflineTickets: React.FC<AdminOfflineTicketsProps> = ({
                           >
                             {b.quantity}x {getTierCopy(b.tier, lang).name}
                           </span>
-                          <span className="font-modern-price font-semibold text-slate-200">
-                            {formatCurrencyEgp(b.totalEgp, lang)}
-                          </span>
+                          {canViewRevenueAnalytics && (
+                            <span className="font-modern-price font-semibold text-slate-200">
+                              {formatCurrencyEgp(b.totalEgp, lang)}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3">

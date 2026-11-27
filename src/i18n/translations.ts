@@ -388,6 +388,30 @@ const EN_TO_AR_MESSAGES: Record<string, string> = {
     'تم الوصول للحد اليومي لقاعدة البيانات. يتم التصفير تلقائياً غداً.',
   'Permission denied. Make sure your account is signed in and verified.':
     'ليست لديك صلاحية تنفيذ هذه العملية. تأكد من تسجيل الدخول وتفعيل بريدك الإلكتروني.',
+  'This booking no longer exists or was already deleted.':
+    'هذا الحجز لم يعد موجوداً أو تم حذفه مسبقاً.',
+  'Booking code already exists. Please try again.':
+    'كود الحجز موجود بالفعل. يرجى المحاولة مرة أخرى.',
+  'This ticket has not been confirmed as paid yet.':
+    'لم يتم تأكيد دفع هذه التذكرة بعد.',
+  'This ticket is already fully checked in.':
+    'تم استخدام هذه التذكرة وتسجيل دخول جميع أفرادها بالفعل.',
+  'Unable to reach the server. Check your internet connection and try again.':
+    'تعذر الاتصال بالخادم. تأكد من اتصالك بالإنترنت وحاول مرة أخرى.',
+  'Request timed out. Please check your connection and try again.':
+    'انتهت مهلة الطلب. يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى.',
+  'This record was just updated on another device. Please try again.':
+    'تم تحديث هذا السجل للتو من جهاز آخر. يرجى المحاولة مرة أخرى.',
+  'Spreadsheet file is too large (max 10 MB).':
+    'حجم ملف الإكسل كبير جداً (الحد الأقصى ١٠ ميجابايت).',
+  'Please upload an Excel (.xlsx / .xls) or CSV (.csv) spreadsheet.':
+    'يرجى رفع ملف إكسل (.xlsx / .xls) أو ملف CSV (.csv).',
+  'The uploaded spreadsheet has no worksheets.':
+    'الملف المرفوع لا يحتوي على أي أوراق عمل.',
+  'No data rows found in the first worksheet.':
+    'لم يتم العثور على صفوف بيانات في ورقة العمل الأولى.',
+  'Please split spreadsheets larger than 2,000 rows into smaller batches.':
+    'يرجى تقسيم الملفات التي تزيد عن ٢٬٠٠٠ صف إلى دفعات أصغر.',
 };
 
 const VALID_TIER_IDS: readonly TierId[] = ['Silver', 'Gold', 'VIP', 'Lounge'];
@@ -983,6 +1007,29 @@ export const translations = {
     auditColDetails: 'Details',
     auditColAmount: 'Amount',
     auditLoadMoreBtn: 'Load Older Actions',
+
+    // Admin Quick Search (Ctrl+K)
+    quickSearchBtn: 'Quick Search',
+    quickSearchAria: 'Open global staff quick search (Ctrl+K)',
+    quickSearchPlaceholder: 'Search booking code, phone, name, transfer ref, concert, or promo...',
+    quickSearchScopeAll: 'All',
+    quickSearchScopeBookings: 'Bookings',
+    quickSearchScopeConcerts: 'Concerts',
+    quickSearchScopePromos: 'Promos',
+    quickSearchScopeWaitlist: 'Waitlist',
+    quickSearchJumpTabs: 'Quick Jump to Tab',
+    quickSearchPendingPreview: 'Recent & Pending Approvals',
+    quickSearchReadyPreview: 'Paid Passes Ready for Check-In',
+    quickSearchSectionBookings: 'Bookings',
+    quickSearchSectionConcerts: 'Concerts',
+    quickSearchSectionPromos: 'Promo Codes',
+    quickSearchSectionWaitlist: 'Waitlist',
+    quickSearchNoMatches: 'No matching records found',
+    quickSearchNoMatchesHint: 'Try searching by booking code (GZ-...), mobile number, fan name, or transfer ref.',
+    quickSearchEscHint: 'ESC to close',
+    quickSearchOpenTab: 'Open Tab',
+    quickSearchWhatsappAria: 'Message fan on WhatsApp',
+    quickSearchCopyMobile: 'Copy Mobile',
   },
   ar: {
     siteTitle: 'Gen Z Events — حفلات قنا المباشرة',
@@ -1517,6 +1564,29 @@ export const translations = {
     auditColDetails: 'التفاصيل',
     auditColAmount: 'المبلغ',
     auditLoadMoreBtn: 'تحميل عمليات أقدم',
+
+    // Admin Quick Search (Ctrl+K)
+    quickSearchBtn: 'بحث سريع',
+    quickSearchAria: 'فتح البحث السريع في لوحة الإدارة (Ctrl+K)',
+    quickSearchPlaceholder: 'ابحث بكود الحجز، الموبايل، الاسم، مرجع التحويل، الحفل، أو كود الخصم...',
+    quickSearchScopeAll: 'الكل',
+    quickSearchScopeBookings: 'الحجوزات',
+    quickSearchScopeConcerts: 'الحفلات',
+    quickSearchScopePromos: 'أكواد الخصم',
+    quickSearchScopeWaitlist: 'قائمة الانتظار',
+    quickSearchJumpTabs: 'الانتقال السريع للتبويبات',
+    quickSearchPendingPreview: 'الحجوزات المعلقة والأحدث',
+    quickSearchReadyPreview: 'تذاكر مدفوعة جاهزة للدخول',
+    quickSearchSectionBookings: 'الحجوزات',
+    quickSearchSectionConcerts: 'الحفلات',
+    quickSearchSectionPromos: 'أكواد الخصم',
+    quickSearchSectionWaitlist: 'قائمة الانتظار',
+    quickSearchNoMatches: 'لا توجد نتائج مطابقة',
+    quickSearchNoMatchesHint: 'جرّب البحث بكود الحجز (GZ-...) أو رقم الموبايل أو اسم العميل أو مرجع التحويل.',
+    quickSearchEscHint: 'ESC للإغلاق',
+    quickSearchOpenTab: 'فتح التبويب',
+    quickSearchWhatsappAria: 'مراسلة العميل عبر واتساب',
+    quickSearchCopyMobile: 'نسخ الموبايل',
   },
 } as const;
 
